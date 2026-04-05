@@ -11,14 +11,10 @@ WORKDIR /code
 
 COPY poetry.lock pyproject.toml entrypoint.sh /code/
 
+RUN chmod +x /code/entrypoint.sh
 RUN pip install "poetry==$POETRY_VERSION"
-
 RUN poetry install
 
 COPY . /code
 
-# dev stage
-FROM base AS dev
-
-ENV WATCHFILES_FORCE_POLLING=true \
-    WATCHFILES_POLLING_INTERVAL=1
+ENTRYPOINT ["/entrypoint.sh"]

@@ -1,0 +1,13 @@
+name: OpenSearch Pipeline 
+on:
+  pull_request:
+    branches: [main, qa, demo]
+    paths: 
+      - 'opensearch/**'
+      - '.github/workflows/opensearch-ci.yml'
+
+  push: 
+    branches: [main, qa, demo]
+    paths: 
+      - 'opensearch/**'
+      - '.github/workflows/opensearch-ci.yml'
