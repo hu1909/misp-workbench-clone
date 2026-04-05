@@ -1,0 +1,956 @@
+import os
+import logging
+
+import requests
+from app.models import feed as feed_models
+from app.models import event as event_models
+from app.repositories import sync as sync_repository
+from app.repositories import events as events_repository
+from app.repositories import organisations as organisations_repository
+from app.schemas import feed as feed_schemas
+from app.schemas import user as user_schemas
+from app.schemas import attribute as attribute_schemas
+from app.schemas import event as event_schemas
+from app.worker import tasks
+from fastapi import HTTPException, status
+from pymisp import MISPEvent
+from sqlalchemy.orm import Session
+from datetime import datetime, timedelta
+import csv
+import json
+
+logger = logging.getLogger(__name__)
+
+USER_AGENT = "misp-workbench/" + os.environ.get("APP_VERSION", "")
+
+
+def get_feeds(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(feed_models.Feed).offset(skip).limit(limit).all()
+
+
+def get_feed_by_id(db: Session, feed_id: int) -> feed_models.Feed:
+    return db.query(feed_models.Feed).filter(feed_models.Feed.id == feed_id).first()
+
+
+def create_feed(db: Session, feed: feed_schemas.FeedCreate):
+    db_feed = feed_models.Feed(
+        name=feed.name,
+        provider=feed.provider,
+        url=feed.url,
+        rules=feed.rules,
+        enabled=feed.enabled,
+        distribution=feed.distribution,
+        sharing_group_id=feed.sharing_group_id,
+        tag_id=feed.tag_id,
+        default=feed.default,
+        source_format=feed.source_format,
+        fixed_event=feed.fixed_event,
+        delta_merge=feed.delta_merge,
+        event_uuid=feed.event_uuid,
+        publish=feed.publish,
+        override_ids=feed.override_ids,
+        settings=feed.settings,
+        input_source=feed.input_source,
+        delete_local_file=feed.delete_local_file,
+        lookup_visible=feed.lookup_visible,
+        headers=feed.headers,
+        caching_enabled=feed.caching_enabled,
+        force_to_ids=feed.force_to_ids,
+        orgc_id=feed.orgc_id,
+        tag_collection_id=feed.tag_collection_id,
+        cached_elements=feed.cached_elements,
+        coverage_by_other_feeds=feed.coverage_by_other_feeds,
+    )
+
+    db.add(db_feed)
+    db.commit()
+    db.refresh(db_feed)
+
+    return db_feed
+
+
+def update_feed(
+    db: Session,
+    feed_id: int,
+    feed: feed_schemas.FeedUpdate,
+) -> feed_models.Feed:
+    db_feed = get_feed_by_id(db, feed_id=feed_id)
+
+    if db_feed is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Feed not found"
+        )
+
+    feed_patch = feed.model_dump(exclude_unset=True)
+    for key, value in feed_patch.items():
+        setattr(db_feed, key, value)
+
+    db.add(db_feed)
+    db.commit()
+    db.refresh(db_feed)
+
+    return db_feed
+
+
+def delete_feed(db: Session, feed_id: int) -> None:
+    db_feed = get_feed_by_id(db, feed_id=feed_id)
+
+    if db_feed is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Feed not found"
+        )
+
+    db.delete(db_feed)
+    db.commit()
+
+
+def build_feed_headers(feed) -> dict:
+    headers = {"User-Agent": USER_AGENT}
+    if feed.headers:
+        headers.update(feed.headers)
+    return headers
+
+
+def fetch_feed_event_by_uuid(feed, event_uuid):
+    url = f"{feed.url}/{event_uuid}.json"
+    response = requests.get(url, headers=build_feed_headers(feed))
+    if response.status_code == 200:
+        return response.json()
+    else:
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=f"Failed to fetch event {event_uuid}: {response.text}",
+        )
+
+
+def process_feed_event(
+    db: Session,
+    event_uuid: str,
+    feed: feed_models.Feed,
+    user: user_schemas.User,
+):
+    logging.info(f"Fetching event {feed.url}/{event_uuid}")
+    event_raw = fetch_feed_event_by_uuid(feed, event_uuid)
+    event = MISPEvent()
+    event.load(event_raw)
+
+    orgc = organisations_repository.get_or_create_organisation_from_feed(
+        db, event.Orgc, user=user
+    )
+
+    local_event = events_repository.get_event_by_uuid(db, event_uuid)
+
+    # TODO: process tag_id and tag_collection_id
+    # TODO: process feed.sharing_group_id
+    # TODO: apply feed rules (disable_correlation, unpublish_event)
+
+    if local_event is None:
+
+        local_event = events_repository.create_event_from_fetched_event(
+            db, event, orgc, feed, user
+        )
+
+        sync_repository.create_pulled_event_tags(db, local_event, event.tags, user)
+
+        sync_repository.create_pulled_event_reports(
+            db, local_event.uuid, event.event_reports, user
+        )
+
+        # process objects
+        sync_repository.create_pulled_event_objects(
+            db, str(local_event.uuid), event.objects, user
+        )
+
+        # process attributes
+        sync_repository.create_pulled_event_attributes(
+            db, str(local_event.uuid), event.attributes, user
+        )
+    else:
+
+        local_event = events_repository.update_event_from_fetched_event(
+            db, event, orgc, feed, user
+        )
+
+        sync_repository.create_pulled_event_tags(db, local_event, event.tags, user)
+
+        sync_repository.create_pulled_event_reports(
+            db, local_event.uuid, event.event_reports, user
+        )
+
+        # process objects
+        sync_repository.update_pulled_event_objects(
+            db, str(local_event.uuid), event.objects, user
+        )
+
+        # process attributes
+        sync_repository.update_pulled_event_attributes(
+            db, str(local_event.uuid), event.attributes, user
+        )
+
+    db.commit()
+
+    return {"result": "success", "message": "Event processed"}
+
+
+def get_feed_manifest(feed):
+    return requests.get(f"{feed.url}/manifest.json", headers=build_feed_headers(feed))
+
+
+def fetch_feed(db: Session, feed_id: int, user: user_schemas.User):
+    logger.info("fetch feed id=%s job started", feed_id)
+
+    db_feed = get_feed_by_id(db, feed_id=feed_id)
+
+    if db_feed is None:
+        raise Exception("Feed not found")
+
+    if not db_feed.enabled:
+        raise Exception("Feed is not enabled")
+
+    if db_feed is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Feed not found"
+        )
+
+    logger.info(f"Fetching feed {db_feed.id} {db_feed.name}")
+
+    if db_feed.source_format == "misp":
+        # TODO: check feed etag in redis cache
+        req = get_feed_manifest(db_feed)
+
+        if req.status_code == 200:
+            manifest = req.json()
+
+            # TODO: cache etag value in redis
+            # etag = req.headers.get("etag")
+            # logger.info(f"Fetching feed UUID {db_feed.uuid} ETag: {etag}")
+
+            # filter feed events to fetch based on rules
+            manifest = filter_feed_by_rules(db_feed.rules, manifest)
+
+            feed_events_uuids = manifest.keys()
+
+            local_feed_events = events_repository.get_events_by_uuids(
+                db, feed_events_uuids
+            )
+
+            # filter out events that are already in the database and have the same or older timestamp
+            skip_events = [
+                str(event.uuid)
+                for event in local_feed_events
+                if event.timestamp >= manifest[str(event.uuid)]["timestamp"]
+            ]
+
+            feed_events_uuids = [
+                uuid for uuid in feed_events_uuids if uuid not in skip_events
+            ]
+
+            # TODO: check if event is blocked by blocklist or feed rules (tags, orgs)
+
+            # fetch events in parallel http requests
+
+            if not feed_events_uuids:
+                return {"result": "success", "message": "No new events to fetch"}
+
+            for event_uuid in feed_events_uuids:
+                tasks.fetch_feed_event.delay(str(event_uuid), db_feed.id, user.id)
+
+    if db_feed.source_format == "csv":
+        tasks.fetch_csv_feed.delay(db_feed.id, user.id)
+
+    if db_feed.source_format == "freetext":
+        tasks.fetch_freetext_feed.delay(db_feed.id, user.id)
+
+    if db_feed.source_format == "json":
+        tasks.fetch_json_feed.delay(db_feed.id, user.id)
+
+    logger.info("fetch feed id=%s all event fetch tasks enqueued.", feed_id)
+    return {
+        "result": "success",
+        "message": "All feed id=%s events to fetch enqueued." % feed_id,
+    }
+
+
+def filter_feed_by_rules(rules: dict, manifest: dict):
+    # apply feed rules to filter manifest events
+    if not rules or rules == {}:
+        return manifest
+
+    filtered_manifest = {}
+
+    if "event_uuid" in rules:
+        event_uuids_rule = (
+            rules["event_uuid"]
+            if isinstance(rules["event_uuid"], list)
+            else [rules["event_uuid"]]
+        )
+
+    for uuid, event in manifest.items():
+        # filter by event id
+        if "event_uuid" in rules:
+            if uuid not in event_uuids_rule:
+                continue
+
+        if "timestamp" in rules:
+            try:
+                timestamp_rule = int(rules["timestamp"])
+            except ValueError:
+                # Convert human-readable time formats (e.g., 30d, 1y) to a timestamp
+                timestamp_rule = parse_human_readable_time(rules["timestamp"])
+
+            if event["timestamp"] <= timestamp_rule:
+                continue
+
+        if "tags" in rules:
+            event_tags = event.get("Tag", [])
+            required_tags = (
+                rules["tags"] if isinstance(rules["tags"], list) else [rules["tags"]]
+            )
+            if not any(
+                tag
+                in [
+                    (
+                        t.get("name", "")
+                        if isinstance(t, dict)
+                        else getattr(t, "name", "")
+                    )
+                    for t in event_tags
+                ]
+                for tag in required_tags
+            ):
+                continue
+
+        if "orgs" in rules:
+            event_org = event.get("Orgc", {}).get("name", "")
+            required_orgs = (
+                rules["orgs"] if isinstance(rules["orgs"], list) else [rules["orgs"]]
+            )
+            if event_org not in required_orgs:
+                continue
+
+        filtered_manifest[uuid] = event
+
+    return filtered_manifest
+
+
+def explore_misp_feed(db: Session, feed_id: int, page: int = 0, limit: int = 20):
+    feed = get_feed_by_id(db, feed_id)
+    if not feed:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Feed not found"
+        )
+
+    if feed.source_format != "misp":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Feed is not a MISP feed",
+        )
+
+    req = get_feed_manifest(feed)
+    if req.status_code != 200:
+        raise HTTPException(
+            status_code=req.status_code,
+            detail=f"Failed to fetch feed manifest: {req.text}",
+        )
+
+    manifest = req.json()
+    total = len(manifest)
+
+    filtered_manifest = filter_feed_by_rules(feed.rules, manifest)
+    total_filtered = len(filtered_manifest)
+
+    items = list(filtered_manifest.items())
+    page_items = items[page * limit : (page + 1) * limit]
+
+    events = [{"uuid": uuid, **event_data} for uuid, event_data in page_items]
+
+    return {
+        "events": events,
+        "total": total,
+        "total_filtered": total_filtered,
+        "page": page,
+        "limit": limit,
+    }
+
+
+def explore_misp_feed_event(db: Session, feed_id: int, event_uuid: str):
+    feed = get_feed_by_id(db, feed_id)
+    if not feed:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Feed not found"
+        )
+
+    return fetch_feed_event_by_uuid(feed, event_uuid)
+
+
+def fetch_single_feed_event(db: Session, feed_id: int, event_uuid: str, user):
+    feed = get_feed_by_id(db, feed_id)
+    if not feed:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Feed not found"
+        )
+
+    result = tasks.fetch_feed_event.delay(event_uuid, feed_id, user.id)
+    return {"task": {"id": result.id, "name": "fetch_feed_event", "status": result.status}}
+
+
+def test_misp_feed_connection(feed: feed_schemas.FeedCreate):
+    try:
+        response = get_feed_manifest(feed)
+        if response.status_code == 200:
+            manifest = response.json()
+
+            total_events = len(manifest)
+
+            # apply feed rules to filter manifest events
+            filtered_manifest = filter_feed_by_rules(feed.rules, manifest)
+            total_filtered_events = len(filtered_manifest)
+
+            return {
+                "result": "success",
+                "message": "Connection successful",
+                "total_events": total_events,
+                "total_filtered_events": total_filtered_events,
+            }
+        else:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Failed to connect to feed: {response.text}",
+            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to connect to feed: {str(e)}",
+        )
+
+
+def process_csv_feed_row_to_attribute(row: list, settings: dict):
+
+    type_mappings = {}
+
+    if (
+        settings["csvConfig"]["attribute"]["type"]["mappings"]
+        and settings["csvConfig"]["attribute"]["type"]["strategy"] == "column"
+    ):
+        for mapping in settings["csvConfig"]["attribute"]["type"]["mappings"]:
+            type_mappings[mapping["from"]] = mapping["to"]
+
+    if settings["csvConfig"]["mode"] == "attribute":
+        # value extraction
+        if settings["csvConfig"]["attribute"]["value_column"] is None:
+            return {
+                "value": None,
+                "type": None,
+                "error": "Value column index is not defined in settings",
+            }
+
+        value_column_index = settings["csvConfig"]["attribute"]["value_column"]
+        if value_column_index >= len(row):
+            return {
+                "value": None,
+                "type": None,
+                "error": f"Value column index {value_column_index} out of range for row with {len(row)} columns",
+            }
+
+        value = row[value_column_index]
+
+        # type extraction
+        if settings["csvConfig"]["attribute"]["type"]["strategy"] == "fixed":
+            type_value = settings["csvConfig"]["attribute"]["type"]["value"]
+        elif settings["csvConfig"]["attribute"]["type"]["strategy"] == "column":
+            type_column_index = settings["csvConfig"]["attribute"]["type"]["column"]
+            if type_column_index is None:
+                return {
+                    "value": value,
+                    "type": None,
+                    "error": "Type column index is not defined in settings",
+                }
+
+            if type_column_index >= len(row):
+                return {"value": value, "type": None}
+            type_value = row[type_column_index]
+
+            if type_value in type_mappings:
+                type_value = type_mappings[type_value]
+
+            if type_value not in attribute_schemas.AttributeType.__members__.values():
+                return {
+                    "value": value,
+                    "type": None,
+                    "error": f"Type value '{type_value}' is not a valid attribute type",
+                }
+
+        attribute = {"value": value, "type": type_value}
+
+        # timestamp extraction
+        if settings["csvConfig"]["attribute"]["properties"]["timestamp"] is not None:
+            if (
+                settings["csvConfig"]["attribute"]["properties"]["timestamp"][
+                    "strategy"
+                ]
+                == "fixed"
+            ):
+                attribute["timestamp"] = settings["csvConfig"]["attribute"][
+                    "properties"
+                ]["timestamp"]["value"]
+
+            if (
+                settings["csvConfig"]["attribute"]["properties"]["timestamp"][
+                    "strategy"
+                ]
+                == "column"
+            ):
+                timestamp_column_index = settings["csvConfig"]["attribute"][
+                    "properties"
+                ]["timestamp"]["column"]
+                if timestamp_column_index is not None and timestamp_column_index < len(
+                    row
+                ):
+                    attribute["timestamp"] = row[timestamp_column_index]
+                else:
+                    attribute["timestamp"] = None
+        else:
+            raise ValueError(
+                f"Unsupported type strategy: {settings['csvConfig']['attribute']['type']['strategy']}"
+            )
+
+        # to_ids extraction
+        if settings["csvConfig"]["attribute"]["properties"]["to_ids"] is not None:
+            if (
+                settings["csvConfig"]["attribute"]["properties"]["to_ids"]["strategy"]
+                == "fixed"
+            ):
+                attribute["to_ids"] = settings["csvConfig"]["attribute"]["properties"][
+                    "to_ids"
+                ]["value"]
+
+            if (
+                settings["csvConfig"]["attribute"]["properties"]["to_ids"]["strategy"]
+                == "column"
+            ):
+                to_ids_column_index = settings["csvConfig"]["attribute"]["properties"][
+                    "to_ids"
+                ]["column"]
+                if to_ids_column_index is not None and to_ids_column_index < len(row):
+                    attribute["to_ids"] = str(
+                        row[to_ids_column_index]
+                    ).strip().lower() in ["yes", "1", "true"]
+                else:
+                    attribute["to_ids"] = False
+
+        # tags extraction
+        if settings["csvConfig"]["attribute"]["properties"]["tags"] is not None:
+            if (
+                settings["csvConfig"]["attribute"]["properties"]["tags"]["strategy"]
+                == "fixed"
+            ):
+                attribute["tags"] = settings["csvConfig"]["attribute"]["properties"][
+                    "tags"
+                ]["value"]
+
+            if (
+                settings["csvConfig"]["attribute"]["properties"]["tags"]["strategy"]
+                == "column"
+            ):
+                tags_column_index = settings["csvConfig"]["attribute"]["properties"][
+                    "tags"
+                ]["column"]
+                if tags_column_index is not None and tags_column_index < len(row):
+                    attribute["tags"] = [
+                        tag.strip() for tag in row[tags_column_index].split(",")
+                    ]
+                else:
+                    attribute["tags"] = []
+
+        # comment extraction
+        if settings["csvConfig"]["attribute"]["properties"]["comment"] is not None:
+            if (
+                settings["csvConfig"]["attribute"]["properties"]["comment"]["strategy"]
+                == "fixed"
+            ):
+                attribute["comment"] = settings["csvConfig"]["attribute"]["properties"][
+                    "comment"
+                ]["value"]
+
+            if (
+                settings["csvConfig"]["attribute"]["properties"]["comment"]["strategy"]
+                == "column"
+            ):
+                comment_column_index = settings["csvConfig"]["attribute"]["properties"][
+                    "comment"
+                ]["column"]
+                if comment_column_index is not None and comment_column_index < len(row):
+                    attribute["comment"] = row[comment_column_index]
+                else:
+                    attribute["comment"] = ""
+
+        # first_seen extraction
+        if settings["csvConfig"]["attribute"]["properties"]["first_seen"] is not None:
+            if (
+                settings["csvConfig"]["attribute"]["properties"]["first_seen"][
+                    "strategy"
+                ]
+                == "fixed"
+            ):
+                attribute["first_seen"] = settings["csvConfig"]["attribute"][
+                    "properties"
+                ]["first_seen"]["value"]
+
+            if (
+                settings["csvConfig"]["attribute"]["properties"]["first_seen"][
+                    "strategy"
+                ]
+                == "column"
+            ):
+                first_seen_column_index = settings["csvConfig"]["attribute"][
+                    "properties"
+                ]["first_seen"]["column"]
+                if (
+                    first_seen_column_index is not None
+                    and first_seen_column_index < len(row)
+                ):
+                    attribute["first_seen"] = row[first_seen_column_index]
+                else:
+                    attribute["first_seen"] = None
+
+        # last_seen extraction
+        if settings["csvConfig"]["attribute"]["properties"]["last_seen"] is not None:
+            if (
+                settings["csvConfig"]["attribute"]["properties"]["last_seen"][
+                    "strategy"
+                ]
+                == "fixed"
+            ):
+                attribute["last_seen"] = settings["csvConfig"]["attribute"][
+                    "properties"
+                ]["last_seen"]["value"]
+
+            if (
+                settings["csvConfig"]["attribute"]["properties"]["last_seen"][
+                    "strategy"
+                ]
+                == "column"
+            ):
+                last_seen_column_index = settings["csvConfig"]["attribute"][
+                    "properties"
+                ]["last_seen"]["column"]
+                if last_seen_column_index is not None and last_seen_column_index < len(
+                    row
+                ):
+                    attribute["last_seen"] = row[last_seen_column_index]
+                else:
+                    attribute["last_seen"] = None
+
+        return attribute
+
+    elif settings["csvConfig"]["mode"] == "object":
+        raise NotImplementedError("Object mode is not yet implemented")
+    else:
+        raise ValueError(f"Unsupported CSV mode: {settings['csvConfig']['mode']}")
+
+
+def process_csv_feed_row(row: list, settings: dict):
+    if settings["csvConfig"]["mode"] == "attribute":
+        return process_csv_feed_row_to_attribute(row, settings)
+    elif settings["csvConfig"]["mode"] == "object":
+        raise NotImplementedError("Object mode is not yet implemented")
+    else:
+        raise ValueError(f"Unsupported CSV mode: {settings['csvConfig']['mode']}")
+
+
+def fetch_csv_content_from_network(url: str, extra_headers: dict = None) -> list:
+    headers = {"User-Agent": USER_AGENT}
+    if extra_headers:
+        headers.update(extra_headers)
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            content = response.content.decode("utf-8")
+            lines = content.splitlines()
+            return [
+                line
+                for line in lines
+                if line.strip() and not line.strip().startswith("#")
+            ]
+        else:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Failed to fetch CSV feed: {response.text}",
+            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to fetch CSV feed: {str(e)}",
+        )
+
+
+def preview_csv_feed(settings: dict = None, limit: int = 5):
+    if settings["input_source"] == "network":
+        lines = fetch_csv_content_from_network(settings["url"])
+        preview_lines = [line for line in lines[:limit]]
+        parsed_preview_lines = parse_csv_feed_lines(settings["settings"], preview_lines)
+
+        processed_preview = [
+            process_csv_feed_row(row, settings["settings"])
+            for row in parsed_preview_lines
+        ]
+
+        return {
+            "result": "success",
+            "rows": parsed_preview_lines,
+            "preview": processed_preview,
+        }
+    elif settings["input_source"] == "local":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Local file preview is not yet supported",
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid mode or missing URI for CSV preview",
+        )
+
+
+def parse_csv_feed_lines(settings, preview_lines):
+    csv_reader = csv.reader(
+        preview_lines,
+        delimiter=settings["csvConfig"]["delimiter"],
+    )
+    parsed_preview = [[cell.strip() for cell in row] for row in csv_reader]
+    return parsed_preview
+
+
+def _feed_import_label(db_feed: feed_models.Feed) -> str:
+    return "%s Feed Import" % db_feed.source_format.upper()
+
+
+def get_or_create_feed_event(
+    db: Session, db_feed: feed_models.Feed, user: user_schemas.User
+):
+    label = _feed_import_label(db_feed)
+    if db_feed.fixed_event:
+        if db_feed.event_uuid is None:
+            os_event = _create_feed_event(db, db_feed, user, label)
+            db_feed.event_uuid = str(os_event.uuid)
+            db.commit()
+            db.refresh(db_feed)
+        else:
+            os_event = events_repository.get_event_from_opensearch(db_feed.event_uuid)
+
+            if os_event is None or os_event.deleted:
+                os_event = _create_feed_event(db, db_feed, user, label)
+                db_feed.event_uuid = str(os_event.uuid)
+                db.commit()
+                db.refresh(db_feed)
+    else:
+        os_event = events_repository.create_event(
+            db,
+            event_schemas.EventCreate(
+                info="%s: %s - %s" % (label, db_feed.name, datetime.now().isoformat()),
+                analysis=event_models.AnalysisLevel.INITIAL,
+                threat_level=event_models.ThreatLevel.UNDEFINED,
+                distribution=db_feed.distribution,
+                user_id=user.id,
+                org_id=user.org_id,
+            ),
+        )
+
+    return os_event
+
+
+def _create_feed_event(db, db_feed, user, label: str):
+    return events_repository.create_event(
+        db,
+        event_schemas.EventCreate(
+            info="%s: %s" % (label, db_feed.name),
+            analysis=event_models.AnalysisLevel.INITIAL,
+            threat_level=event_models.ThreatLevel.UNDEFINED,
+            distribution=db_feed.distribution,
+            user_id=user.id,
+            org_id=user.org_id,
+        ),
+    )
+
+
+def get_json_path(obj, path: str):
+    """Traverse a dot-notation path on a nested dict, returning None if any key is missing."""
+    if not path:
+        return obj
+    for key in path.split("."):
+        if isinstance(obj, dict):
+            obj = obj.get(key)
+        else:
+            return None
+    return obj
+
+
+def fetch_json_content_from_network(url: str, extra_headers: dict = None) -> str:
+    """Fetch raw text content from a URL for JSON/NDJSON feeds."""
+    headers = {"User-Agent": USER_AGENT}
+    if extra_headers:
+        headers.update(extra_headers)
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            return response.content.decode("utf-8")
+        else:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Failed to fetch JSON feed: {response.text}",
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to fetch JSON feed: {str(e)}",
+        )
+
+
+def parse_json_feed_items(content: str, json_cfg: dict) -> list:
+    """Parse raw text content into a list of JSON objects based on the configured format."""
+    fmt = json_cfg.get("format", "array")
+    items_path = json_cfg.get("items_path") or ""
+
+    if fmt == "ndjson":
+        items = []
+        for line in content.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                obj = json.loads(line)
+                if isinstance(obj, dict):
+                    items.append(obj)
+            except (json.JSONDecodeError, ValueError):
+                continue
+        return items
+
+    try:
+        data = json.loads(content)
+    except (json.JSONDecodeError, ValueError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to parse JSON: {e}",
+        )
+
+    node = get_json_path(data, items_path)
+
+    if isinstance(node, list):
+        return node
+    elif isinstance(node, dict):
+        return [node]
+    elif node is None:
+        path_desc = f" at path '{items_path}'" if items_path else ""
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No data found{path_desc}",
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Expected array or object at path '{items_path}', got {type(node).__name__}",
+        )
+
+
+def process_json_item_to_attribute(item, settings: dict):
+    cfg = settings["jsonConfig"]["attribute"]
+    value_path = cfg.get("value") or ""
+
+    if not isinstance(item, dict):
+        # Primitive item (string, number) — use directly when no path is configured
+        if value_path:
+            return {
+                "value": None,
+                "type": None,
+                "error": f"Cannot traverse path '{value_path}' on a non-object item",
+            }
+        value = str(item)
+    else:
+        value = get_json_path(item, value_path)
+        if value is None:
+            return {
+                "value": None,
+                "type": None,
+                "error": f"Field '{value_path}' not found in item",
+            }
+        value = str(value)
+
+    type_cfg = cfg.get("type") or {}
+    if type_cfg.get("strategy") == "fixed":
+        type_value = type_cfg.get("value")
+    elif type_cfg.get("strategy") == "field":
+        raw_type = get_json_path(item, type_cfg.get("field") or "")
+        if raw_type is None:
+            return {
+                "value": value,
+                "type": None,
+                "error": f"Type field '{type_cfg.get('field')}' not found in item",
+            }
+        type_value = str(raw_type)
+        for mapping in type_cfg.get("mappings") or []:
+            if mapping.get("from") == type_value:
+                type_value = mapping.get("to")
+                break
+    else:
+        type_value = None
+
+    attribute = {"value": value, "type": type_value}
+
+    for prop in ("comment", "to_ids", "tags"):
+        prop_cfg = (cfg.get("properties") or {}).get(prop)
+        if prop_cfg is None:
+            continue
+        if prop_cfg.get("strategy") == "fixed":
+            attribute[prop] = prop_cfg.get("value")
+        elif prop_cfg.get("strategy") == "field":
+            raw = get_json_path(item, prop_cfg.get("field") or "")
+            if prop == "to_ids":
+                attribute[prop] = str(raw).strip().lower() in ["yes", "1", "true"] if raw is not None else False
+            elif prop == "tags":
+                if isinstance(raw, list):
+                    attribute[prop] = [str(t) for t in raw]
+                elif raw is not None:
+                    attribute[prop] = [t.strip() for t in str(raw).split(",")]
+                else:
+                    attribute[prop] = []
+            else:
+                attribute[prop] = str(raw) if raw is not None else ""
+
+    return attribute
+
+
+def preview_json_feed(settings: dict = None, limit: int = 5):
+    if settings.get("input_source") != "network":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Local file preview is not yet supported",
+        )
+
+    content = fetch_json_content_from_network(settings["url"])
+    json_cfg = (settings.get("settings") or {}).get("jsonConfig") or {}
+    items = parse_json_feed_items(content, json_cfg)
+
+    preview_items = items[:limit]
+    nested_settings = settings.get("settings") or {}
+    processed = [
+        process_json_item_to_attribute(item, nested_settings)
+        for item in preview_items
+    ]
+
+    return {"result": "success", "items": preview_items, "preview": processed}
+
+
+def parse_human_readable_time(time_str):
+    unit = time_str[-1]
+    value = int(time_str[:-1])
+    now = datetime.now()
+    if unit == "d":
+        return int((now - timedelta(days=value)).timestamp())
+    elif unit == "h":
+        return int((now - timedelta(hours=value)).timestamp())
+    elif unit == "y":
+        return int((now - timedelta(days=value * 365)).timestamp())
+    else:
+        raise ValueError(f"Unsupported time format: {time_str}")

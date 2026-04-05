@@ -1,0 +1,141 @@
+<script setup>
+import { ref, onMounted } from "vue";
+import { storeToRefs } from "pinia";
+import { useAttributesStore } from "@/stores";
+import TagsSelect from "@/components/tags/TagsSelect.vue";
+import Paginate from "vuejs-paginate-next";
+import AddAttributeModal from "@/components/attributes/AddAttributeModal.vue";
+import AttributeActions from "@/components/attributes/AttributeActions.vue";
+import CopyToClipboard from "@/components/misc/CopyToClipboard.vue";
+import Timestamp from "@/components/misc/Timestamp.vue";
+import { Modal } from "bootstrap";
+import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
+import { faSpinner } from "@fortawesome/free-solid-svg-icons";
+
+const props = defineProps(["event_uuid", "page_size"]);
+
+const emit = defineEmits([
+  "attribute-created",
+  "object-created",
+  "attribute-enriched",
+]);
+
+const attributesStore = useAttributesStore();
+const { page_count, attributes, status } = storeToRefs(attributesStore);
+
+const addAttributeModal = ref(null);
+
+onMounted(() => {
+  addAttributeModal.value = new Modal(
+    document.getElementById("addAttributeModal"),
+  );
+});
+
+function openAddAttributeModal() {
+  addAttributeModal.value.show();
+}
+
+function onPageChange(page) {
+  attributesStore.get({
+    page: page,
+    size: props.page_size,
+    event_uuid: props.event_uuid,
+    deleted: false,
+  });
+}
+onPageChange(1);
+
+function handleAttributesUpdated() {
+  // TODO FIXME: resets the page to 1 and reloads the attributes, not the best way to do this, reload current page
+  onPageChange(1);
+}
+
+function handleObjectCreated(object) {
+  emit("object-created", object);
+}
+</script>
+
+<style scoped>
+.table {
+  table-layout: fixed;
+}
+
+.value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+</style>
+
+<template>
+  <div class="table-responsive-sm">
+    <div v-if="status.error" class="text-danger">
+      Error loading attributes: {{ status.error }}
+    </div>
+    <table class="table table-striped">
+      <thead>
+        <tr>
+          <th scope="col">value</th>
+          <th scope="col">type</th>
+          <th style="width: 250px" scope="col" class="d-none d-sm-table-cell">
+            tags
+          </th>
+          <th scope="col" class="d-none d-sm-table-cell">timestamp</th>
+          <th scope="col" class="text-end">actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr :key="attribute.uuid" v-for="attribute in attributes.items">
+          <td class="value">
+            <CopyToClipboard :value="attribute.value" />
+            {{ attribute.value }}
+          </td>
+          <td>{{ attribute.type }}</td>
+          <td class="d-none d-sm-table-cell">
+            <TagsSelect
+              :modelClass="'attribute'"
+              :model="attribute"
+              :selectedTags="attribute.tags"
+            />
+          </td>
+          <td class="d-none d-sm-table-cell">
+            <Timestamp :timestamp="attribute.timestamp" />
+          </td>
+          <td class="text-end">
+            <AttributeActions
+              :attribute="attribute"
+              @attribute-deleted="handleAttributesUpdated"
+              @attribute-enriched="handleAttributesUpdated"
+              @object-created="handleObjectCreated"
+            />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <span v-if="status.loading">
+      <FontAwesomeIcon :icon="faSpinner" spin class="ms-2" />
+    </span>
+    <Paginate
+      v-if="page_count > 1"
+      :page-count="page_count"
+      :click-handler="onPageChange"
+    />
+    <AddAttributeModal
+      id="addAttributeModal"
+      @attribute-created="handleAttributesUpdated"
+      :modal="addAttributeModal"
+      :event_uuid="event_uuid"
+    />
+    <div class="mt-3">
+      <button
+        type="button"
+        class="w-100 btn btn-outline-primary"
+        @click="openAddAttributeModal"
+      >
+        Add Attribute
+      </button>
+    </div>
+  </div>
+</template>

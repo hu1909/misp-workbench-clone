@@ -1,0 +1,272 @@
+x-environment: &default-env
+  ENVIRONMENT: ${ENVIRONMENT:-prod}
+  POSTGRES_HOSTNAME: ${POSTGRES_HOSTNAME:-postgres}
+  POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+  POSTGRES_USER: ${POSTGRES_USER:-postgres}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  POSTGRES_DB: ${POSTGRES_DB:-misp}
+  OPENSEARCH_HOSTNAME: ${OPENSEARCH_HOSTNAME:-opensearch}
+  OPENSEARCH_PORT: ${OPENSEARCH_PORT:-9200}
+  OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
+  OPENSEARCH_USERNAME: ${OPENSEARCH_USERNAME:-}
+  OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-}
+  OAUTH2_SECRET_KEY: ${OAUTH2_SECRET_KEY}
+  OAUTH2_REFRESH_SECRET_KEY: ${OAUTH2_REFRESH_SECRET_KEY}
+  OAUTH2_ALGORITHM: ${OAUTH2_ALGORITHM:-HS256}
+  OAUTH2_ACCESS_TOKEN_EXPIRE_MINUTES: ${OAUTH2_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+  OAUTH2_REFRESH_TOKEN_EXPIRE_DAYS: ${OAUTH2_REFRESH_TOKEN_EXPIRE_DAYS:-7}
+  REDIS_HOSTNAME: ${REDIS_HOSTNAME:-redis}
+  REDIS_PORT: ${REDIS_PORT:-6379}
+  REDIS_CACHE_DB: ${REDIS_CACHE_DB:-0}
+  CELERY_BROKER_URL: redis://${REDIS_HOSTNAME:-redis}:${REDIS_PORT:-6379}/${REDIS_CELERY_DB:-0}
+  CELERY_RESULT_BACKEND: redis://${REDIS_HOSTNAME:-redis}:${REDIS_PORT:-6379}/${REDIS_CELERY_DB:-1}
+  MODULES_HOST: ${MODULES_HOST:-modules}
+  MODULES_PORT: ${MODULES_PORT:-6666}
+  MCP_AUTH_ENABLED: ${MCP_AUTH_ENABLED:-false}
+  STORAGE_ENGINE: ${STORAGE_ENGINE:-local}
+  S3_ENDPOINT: ${S3_ENDPOINT:-garage:3900}
+  S3_BUCKET: ${S3_BUCKET:-attachments}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+  S3_SECURE: ${S3_SECURE:-false}
+  GARAGE_ADMIN_URL: ${GARAGE_ADMIN_URL:-http://garage:3903}
+  GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN}
+  GARAGE_METRICS_TOKEN: ${GARAGE_METRICS_TOKEN}
+  FLOWER_BASIC_AUTH: ${FLOWER_BASIC_AUTH}
+  MAIL_USERNAME: ${MAIL_USERNAME}
+  MAIL_PASSWORD: ${MAIL_PASSWORD}
+  MAIL_PORT: ${MAIL_PORT}
+  MAIL_SERVER: ${MAIL_SERVER}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+services:
+  postgres:
+    image: postgres:16.3
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-misp}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+  opensearch:
+    image: opensearchproject/opensearch:3.4.0
+    restart: unless-stopped
+    environment:
+      - cluster.name=opensearch-cluster
+      - node.name=opensearch-misp1
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
+      - DISABLE_SECURITY_PLUGIN=false
+      - plugins.security.ssl.http.enabled=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --user admin:$$OPENSEARCH_INITIAL_ADMIN_PASSWORD --cacert /usr/share/opensearch/config/root-ca.pem -X GET https://localhost:9200/_cluster/health?pretty | grep -E '\"status\" : \"(green|yellow)\"'"
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+    networks:
+      - backend
+    volumes:
+      - os_data:/usr/share/opensearch/data
+      - os_logs:/usr/share/opensearch/logs
+
+  setup-opensearch:
+    image: curlimages/curl:latest
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    volumes:
+      - ./opensearch/mappings:/mappings
+      - ./opensearch/pipelines:/pipelines
+      - ./opensearch/index-patterns:/index-patterns
+      - ./opensearch/index-templates:/index-templates
+      - ./opensearch/visualizations:/visualizations
+      - ./opensearch/dashboards:/dashboards
+      - ./opensearch/entrypoint.sh:/entrypoint.sh
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    environment:
+      <<: *default-env
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
+      OPENSEARCH_DASHBOARDS_PASSWORD: ${OPENSEARCH_DASHBOARDS_PASSWORD}
+    networks:
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+    networks:
+      - backend
+
+  garage:
+    image: dxflrs/garage:v2.2.0
+    restart: unless-stopped
+    ports:
+      - "3900:3900"
+      - "3903:3903"
+    volumes:
+      - garage-data:/var/lib/garage/data
+      - garage-meta:/var/lib/garage/meta
+      - ./garage.toml:/etc/garage.toml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3903/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+  api:
+    build:
+      context: ./api
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      <<: *default-env
+    entrypoint: ["bash", "-c", "./entrypoint.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      setup-opensearch:
+        condition: service_completed_successfully
+    volumes:
+      - attachments-data:/tmp/attachments
+    networks:
+      - backend
+      - frontend
+
+  worker:
+    build:
+      context: ./api
+    command: poetry run celery -A app.worker.tasks worker --loglevel=info --hostname worker@%h -E --autoscale=4,10
+    restart: unless-stopped
+    environment:
+      <<: *default-env
+    depends_on:
+      - api
+      - redis
+      - postgres
+    volumes:
+      - attachments-data:/tmp/attachments
+    networks:
+      - backend
+
+  beat:
+    build:
+      context: ./api
+    command: poetry run celery -A app.worker.tasks beat --loglevel=info --scheduler redbeat.RedBeatScheduler
+    restart: unless-stopped
+    environment:
+      <<: *default-env
+    depends_on:
+      - api
+      - redis
+      - postgres
+    volumes:
+      - attachments-data:/tmp/attachments
+    networks:
+      - backend
+
+  flower:
+    build:
+      context: ./api
+    command: poetry run celery -A app.worker.tasks flower --loglevel=info --persistent=True --auto_refresh=True --state_save_interval=5
+    ports:
+      - "5555:5555"
+    environment:
+      <<: *default-env
+    depends_on:
+      - worker
+    networks:
+      - backend
+      - frontend
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    environment:
+      API_HOST: api
+    depends_on:
+      - api
+    networks:
+      - frontend
+
+  dashboards:
+    image: opensearchproject/opensearch-dashboards:3.4.0
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
+      OPENSEARCH_HOSTS: "https://${OPENSEARCH_HOSTNAME:-opensearch}:${OPENSEARCH_PORT:-9200}"
+      OPENSEARCH_DASHBOARDS_PASSWORD: ${OPENSEARCH_DASHBOARDS_PASSWORD}
+    ports:
+      - "5601:5601"
+    depends_on:
+      - opensearch
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --user admin:$$OPENSEARCH_DASHBOARDS_PASSWORD -k -X GET https://localhost:5601/api/status | grep '\"state\":\"green\"'"
+        ]
+      interval: 15s
+      timeout: 15s
+      retries: 40
+      start_period: 60s
+    networks:
+      - backend
+      - frontend
+
+  modules:
+    image: ghcr.io/misp/misp-docker/misp-modules:latest
+    environment:
+      REDIS_BACKEND: redis
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+
+volumes:
+  opensearch-data:
+  postgres-data:
+  garage-data:
+  garage-meta:
+  attachments-data:
+  os_data:
+  os_logs:
+
+networks:
+  backend:
+  frontend:

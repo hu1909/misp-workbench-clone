@@ -1,0 +1,256 @@
+<script setup>
+import { reactive, watch } from "vue";
+import DistributionLevelSelect from "../enums/DistributionLevelSelect.vue";
+import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
+import { faLink } from "@fortawesome/free-solid-svg-icons";
+import { FeedSchema } from "@/schemas/feed";
+import { Form, Field } from "vee-validate";
+
+const props = defineProps({
+  modelValue: {
+    type: Object,
+    required: true,
+  },
+});
+
+const emit = defineEmits(["update:modelValue"]);
+
+const local = reactive({
+  name: "",
+  url: "",
+  provider: "",
+  distribution: "0",
+  enabled: true,
+  fixed_event: true,
+  description: "",
+  input_source: "network",
+  schedule: "86400",
+  fetch_on_create: true,
+  headers: {},
+  ...props.modelValue,
+});
+
+const auth = reactive({
+  type: "none",
+  header_name: "Authorization",
+  header_value: "",
+});
+
+watch(
+  auth,
+  () => {
+    if (auth.type === "header" && auth.header_name && auth.header_value) {
+      local.headers = { [auth.header_name]: auth.header_value };
+    } else {
+      local.headers = {};
+    }
+  },
+  { deep: true },
+);
+
+/**
+ * Sync incoming modelValue → local state
+ */
+watch(
+  () => props.modelValue,
+  (value) => {
+    Object.assign(local, value);
+  },
+  { deep: true },
+);
+
+/**
+ * Emit local changes → parent
+ */
+watch(
+  local,
+  () => {
+    emit("update:modelValue", { ...local });
+  },
+  { deep: true },
+);
+
+function handleDistributionLevelUpdated(distributionLevelId) {
+  local.distribution = parseInt(distributionLevelId);
+}
+</script>
+
+<template>
+  <div class="feed-base-form">
+    <Form :validation-schema="FeedSchema" v-slot="{ errors }">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label" for="feed.name">Name</label>
+          <Field
+            class="form-control"
+            id="feed.name"
+            name="feed.name"
+            v-model="local.name"
+            :class="{ 'is-invalid': errors['feed.name'] }"
+          >
+          </Field>
+          <div class="invalid-feedback">{{ errors["feed.name"] }}</div>
+        </div>
+        <div class="col-md-6 d-flex align-items-end">
+          <Field
+            class="form-control"
+            id="feed.enabled"
+            name="feed.enabled"
+            :value="local.enabled"
+            v-model="local.enabled"
+            :class="{ 'is-invalid': errors['feed.enabled'] }"
+          >
+            <div class="form-check form-switch">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                v-model="local.enabled"
+                id="feedEnabled"
+              />
+              <label class="form-check-label" for="feedEnabled">
+                Enabled
+              </label>
+            </div>
+          </Field>
+          <div class="invalid-feedback">{{ errors["feed.enabled"] }}</div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="feed.provider">Provider</label>
+          <Field
+            class="form-control"
+            id="feed.provider"
+            name="feed.provider"
+            v-model="local.provider"
+            :class="{ 'is-invalid': errors['feed.provider'] }"
+          >
+          </Field>
+          <div class="invalid-feedback">{{ errors["feed.provider"] }}</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="feed.distribution" class="form-label">Distribution</label>
+          <DistributionLevelSelect
+            name="feed.distribution"
+            :selected="local.distribution"
+            @distribution-level-updated="handleDistributionLevelUpdated"
+            :errors="errors['feed.distribution']"
+          />
+          <div class="invalid-feedback">{{ errors["feed.distribution"] }}</div>
+        </div>
+
+        <!-- <div class="col-md-2">
+          <label class="form-label" for="feed.input_source">Source</label>
+          <Field class="form-control" id="feed.input_source" name="feed.input_source" as="select"
+            v-model="local.input_source" :class="{ 'is-invalid': errors['feed.input_source'] }">
+            <option value="network">Network</option>
+            <option value="local" disabled>Local</option>
+          </Field>
+          <div class="invalid-feedback">{{ errors["feed.input_source"] }}</div>
+        </div> -->
+
+        <div class="col-10">
+          <label class="form-label" for="feed.url">URI</label>
+          <div class="input-group mb-3">
+            <div class="input-group-prepend">
+              <span class="input-group-text">
+                <span>
+                  <FontAwesomeIcon :icon="faLink" class="btg-lg" />
+                </span>
+              </span>
+            </div>
+            <Field
+              class="form-control"
+              id="feed.url"
+              name="feed.url"
+              v-model="local.url"
+              :class="{ 'is-invalid': errors['feed.url'] }"
+            >
+            </Field>
+            <div class="invalid-feedback">{{ errors["feed.url"] }}</div>
+          </div>
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">Authentication</label>
+          <select class="form-select mb-2" v-model="auth.type">
+            <option value="none">No Authentication</option>
+            <option value="header">Auth Header</option>
+          </select>
+          <div v-if="auth.type === 'header'" class="row g-2">
+            <div class="col-md-4">
+              <label class="form-label small text-muted">Header Name</label>
+              <input
+                class="form-control"
+                type="text"
+                v-model="auth.header_name"
+                placeholder="Authorization"
+              />
+            </div>
+            <div class="col-md-8">
+              <label class="form-label small text-muted">Secret</label>
+              <input
+                class="form-control"
+                type="password"
+                v-model="auth.header_value"
+                placeholder="Bearer token123"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-12">
+          <Field
+            class="form-control"
+            id="feed.enabled"
+            name="feed.fixed_event"
+            :value="local.fixed_event"
+            v-model="local.fixed_event"
+            :class="{ 'is-invalid': errors['feed.fixed_event'] }"
+          >
+            <div class="form-check form-switch">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                v-model="local.fixed_event"
+                id="feedFixedEvent"
+              />
+              <label class="form-check-label" for="feedFixedEvent">
+                Fixed Event
+              </label>
+            </div>
+          </Field>
+          <div class="form-text text-muted">
+            If enabled, all attributes from this feed will be associated with a
+            single fixed event. Otherwise, a new event will be created for each
+            fetch.
+          </div>
+          <div class="invalid-feedback">{{ errors["feed.fixed_event"] }}</div>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Update interval</label>
+          <select class="form-select" v-model="local.schedule">
+            <option value="3600">Hourly</option>
+            <option value="86400">Daily</option>
+            <option value="604800">Weekly</option>
+            <option value="disabled">No automatic updates</option>
+          </select>
+        </div>
+
+        <div class="col-md-6 d-flex align-items-end">
+          <div class="form-check">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              v-model="local.fetch_on_create"
+              id="fetchOnCreate"
+            />
+            <label class="form-check-label" for="fetchOnCreate">
+              Fetch immediately after creation
+            </label>
+          </div>
+        </div>
+      </div>
+    </Form>
+  </div>
+</template>

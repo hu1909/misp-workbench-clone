@@ -1,0 +1,424 @@
+import json
+
+from typing import Annotated, Optional
+from uuid import UUID
+from app.auth.security import get_current_active_user
+from app.db.session import get_db
+from app.repositories import events as events_repository
+from app.repositories import tags as tags_repository
+from app.repositories import attachments as attachments_repository
+from app.repositories import objects as objects_repository
+from app.schemas import event as event_schemas
+from app.schemas import user as user_schemas
+from app.schemas import object as object_schemas
+from app.schemas import vulnerability as vulnerability_schemas
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Response,
+    Security,
+    UploadFile,
+    Form,
+    Query,
+)
+from fastapi_pagination import Page, Params
+from sqlalchemy.orm import Session
+from starlette import status
+from fastapi.responses import JSONResponse
+
+router = APIRouter()
+
+
+async def get_events_parameters(
+    info: Optional[str] = Query(None),
+    deleted: Optional[bool] = Query(None),
+    uuid: Optional[str] = Query(None),
+    include_attributes: bool = Query(False),
+):
+    return {
+        "info": info,
+        "deleted": deleted,
+        "uuid": uuid,
+        "include_attributes": include_attributes,
+    }
+
+
+@router.get("/events/", response_model=Page[event_schemas.Event])
+async def get_events(
+    params: dict = Depends(get_events_parameters),
+    page_params: Params = Depends(),
+    user: user_schemas.User = Security(get_current_active_user, scopes=["events:read"]),
+) -> Page[event_schemas.Event]:
+    return events_repository.get_events_from_opensearch(
+        page_params,
+        params["info"],
+        params["deleted"],
+        params["uuid"],
+    )
+
+
+@router.get("/events/search")
+async def search_events(
+    query: str = Query(..., min_length=0),
+    page: int = Query(1, ge=1),
+    size: int = Query(10, ge=1, le=100),
+    sort_by: Optional[str] = Query("@timestamp", pattern="^(_score|@timestamp)$"),
+    sort_order: Optional[str] = Query("desc", pattern="^(asc|desc)$"),
+    user: user_schemas.User = Security(get_current_active_user, scopes=["events:read"]),
+):
+
+    from_value = (page - 1) * size
+
+    return events_repository.search_events(query, page, from_value, size, sort_by, sort_order)
+
+
+@router.get("/events/histogram")
+async def get_events_histogram(
+    query: str = Query(..., min_length=0),
+    interval: Optional[str] = Query("1d", pattern="^(1d|1w|1M)$"),
+    user: user_schemas.User = Security(get_current_active_user, scopes=["events:read"]),
+):
+    return events_repository.search_events_histogram(query, interval)
+
+
+@router.get("/events/export")
+async def export_events(
+    query: str = Query(..., min_length=0),
+    format: Optional[str] = Query("json"),
+    user: user_schemas.User = Security(get_current_active_user, scopes=["events:read"]),
+):
+    results = events_repository.export_events(query, format=format)
+
+    if format == "json":
+        return JSONResponse(list(results))
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid format specified"
+    )
+
+
+@router.post("/events/force-index", status_code=status.HTTP_202_ACCEPTED)
+def force_index(
+    uuid: Optional[UUID] = Query(None),
+    db: Session = Depends(get_db),
+    user: user_schemas.User = Security(
+        get_current_active_user, scopes=["events:update"]
+    ),
+):
+    from app.worker import tasks as _tasks
+
+    if uuid is not None:
+        os_event = events_repository.get_event_from_opensearch(uuid)
+        if os_event is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Event not found"
+            )
+        _tasks.handle_updated_event(str(os_event.uuid))
+        return JSONResponse(
+            content={"message": f"Event {uuid} has been re-indexed."},
+            status_code=status.HTTP_202_ACCEPTED,
+        )
+
+    uuids = events_repository.get_event_uuids_from_opensearch()
+    for event_uuid in uuids:
+        _tasks.handle_updated_event(str(event_uuid))
+    return JSONResponse(
+        content={"message": "Indexing job dispatched for all events."},
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+
+
+@router.get("/events/{event_uuid}", response_model=event_schemas.Event)
+def get_event_by_uuid(
+    event_uuid: UUID,
+    user: user_schemas.User = Security(get_current_active_user, scopes=["events:read"]),
+) -> event_schemas.Event:
+    os_event = events_repository.get_event_from_opensearch(event_uuid)
+    if os_event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Event not found"
+        )
+    return os_event
+
+
+@router.post(
+    "/events/", response_model=event_schemas.Event, status_code=status.HTTP_201_CREATED
+)
+def create_event(
+    event_create_request: event_schemas.EventCreate,
+    db: Session = Depends(get_db),
+    user: user_schemas.User = Security(
+        get_current_active_user, scopes=["events:create"]
+    ),
+) -> event_schemas.Event:
+    existing = events_repository.get_event_by_info(event_create_request.info)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An event with this info already exists",
+        )
+    event_create_request.user_id = user.id
+    event_create_request.org_id = user.org_id
+
+    return events_repository.create_event(db=db, event=event_create_request)
+
+
+@router.patch("/events/{event_uuid}", response_model=event_schemas.Event)
+def update_event(
+    event_uuid: UUID,
+    event: event_schemas.EventUpdate,
+    db: Session = Depends(get_db),
+    user: user_schemas.User = Security(
+        get_current_active_user, scopes=["events:update"]
+    ),
+) -> event_schemas.Event:
+    return events_repository.update_event(db=db, event_uuid=event_uuid, event=event)
+
+
+@router.delete("/events/{event_uuid}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_event(
+    event_uuid: UUID,
+    force: Optional[bool] = Query(False),
+    db: Session = Depends(get_db),
+    user: user_schemas.User = Security(
+        get_current_active_user, scopes=["events:delete"]
+    ),
+):
+    return events_repository.delete_event(db=db, event_uuid=event_uuid, force=force)
+
+
+@router.post(
+    "/events/{event_uuid}/tag/{tag}",
+    status_code=status.HTTP_201_CREATED,
+)
+def tag_event(
+    event_uuid: UUID,
+    tag: str,
+    db: Session = Depends(get_db),
+    user: user_schemas.User = Security(
+        get_current_active_user, scopes=["events:update"]
+    ),
+):
+    event = events_repository.get_event_from_opensearch(event_uuid)
+    if event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Event not found"
+        )
+
+    tag = tags_repository.get_tag_by_name(db, tag_name=tag)
+    if tag is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found"
+        )
+
+    tags_repository.tag_event(db=db, event=event, tag=tag)
+
+    return Response(status_code=status.HTTP_201_CREATED)
+
+
+@router.delete(
+    "/events/{event_uuid}/tag/{tag}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def untag_event(
+    event_uuid: UUID,
+    tag: str,
+    db: Session = Depends(get_db),
+    user: user_schemas.User = Security(
+        get_current_active_user, scopes=["events:update"]
+    ),
+):
+    event = events_repository.get_event_from_opensearch(event_uuid)
+    if event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Event not found"
+        )
+
+    tag = tags_repository.get_tag_by_name(db, tag_name=tag)
+    if tag is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found"
+        )
+
+    tags_repository.untag_event(db=db, event=event, tag=tag)
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/events/{event_uuid}/upload_attachments/",
+    status_code=status.HTTP_200_OK,
+    response_model=list[object_schemas.Object],
+)
+async def upload_attachments(
+    event_uuid: UUID,
+    attachments: list[UploadFile],
+    attachments_meta: Annotated[str, Form()],
+    db: Session = Depends(get_db),
+    user: user_schemas.User = Security(
+        get_current_active_user, scopes=["events:update"]
+    ),
+):
+    db_event = events_repository.get_event_from_opensearch(event_uuid)
+
+    if db_event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Event not found"
+        )
+
+    if attachments_meta:
+        attachments_meta = json.loads(attachments_meta)
+
+    objects = attachments_repository.upload_attachments_to_event(
+        db=db,
+        event=db_event,
+        attachments=attachments,
+        attachments_meta=attachments_meta,
+    )
+
+    return objects
+
+
+@router.get(
+    "/events/{event_uuid}/attachments", response_model=Page[object_schemas.Object]
+)
+def get_event_attachments(
+    event_uuid: str,
+    db: Session = Depends(get_db),
+    user: user_schemas.User = Security(get_current_active_user, scopes=["events:read"]),
+):
+    db_event = events_repository.get_event_from_opensearch(UUID(event_uuid))
+    if db_event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Event not found"
+        )
+
+    objects = objects_repository.get_objects(
+        db,
+        event_uuid=db_event.uuid,
+        deleted=False,
+        template_uuid=[
+            "688c46fb-5edb-40a3-8273-1af7923e2215"  # TODO: get the object template from the json file
+        ],
+    )
+
+    return objects
+
+
+
+@router.post("/events/{event_uuid}/publish")
+def publish(
+    event_uuid: UUID,
+    db: Session = Depends(get_db),
+    user: user_schemas.User = Security(
+        get_current_active_user, scopes=["events:publish"]
+    ),
+):
+    os_event = events_repository.get_event_from_opensearch(event_uuid)
+    if os_event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Event not found"
+        )
+
+    events_repository.publish_event(os_event)
+
+    return JSONResponse(
+        content={"message": f"Event {event_uuid} has been published."},
+        status_code=status.HTTP_200_OK,
+    )
+
+
+@router.post("/events/{event_uuid}/unpublish")
+def unpublish(
+    event_uuid: UUID,
+    db: Session = Depends(get_db),
+    user: user_schemas.User = Security(
+        get_current_active_user, scopes=["events:publish"]
+    ),
+):
+    os_event = events_repository.get_event_from_opensearch(event_uuid)
+    if os_event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Event not found"
+        )
+
+    events_repository.unpublish_event(os_event)
+
+    return JSONResponse(
+        content={"message": f"Event {event_uuid} has been unpublished."},
+        status_code=status.HTTP_200_OK,
+    )
+
+
+@router.post("/events/{event_uuid}/toggle-correlation")
+def toggle_correlation(
+    event_uuid: UUID,
+    db: Session = Depends(get_db),
+    user: user_schemas.User = Security(
+        get_current_active_user, scopes=["events:update"]
+    ),
+):
+    os_event = events_repository.get_event_from_opensearch(event_uuid)
+    if os_event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Event not found"
+        )
+
+    events_repository.toggle_event_correlation(os_event)
+
+    return JSONResponse(
+        content={
+            "message": f"Event {event_uuid} disable_correlation has been toggled."
+        },
+        status_code=status.HTTP_200_OK,
+    )
+
+
+@router.post("/events/{event_uuid}/import")
+def import_data(
+    event_uuid: UUID,
+    db: Session = Depends(get_db),
+    data: dict = {},
+    user: user_schemas.User = Security(
+        get_current_active_user, scopes=["events:import"]
+    ),
+):
+    os_event = events_repository.get_event_from_opensearch(event_uuid)
+    if os_event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Event not found"
+        )
+
+    try:
+        result = events_repository.import_data(db, event=os_event, data=data)
+        return JSONResponse(
+            content=result,
+            status_code=status.HTTP_202_ACCEPTED,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred during import: {str(e)}",
+        )
+
+
+@router.get(
+    "/events/{event_uuid}/vulnerabilities",
+    response_model=list[vulnerability_schemas.Vulnerability],
+)
+def get_event_vulnerabilities(
+    event_uuid: str,
+    db: Session = Depends(get_db),
+    user: user_schemas.User = Security(get_current_active_user, scopes=["events:read"]),
+) -> list[vulnerability_schemas.Vulnerability]:
+    os_event = events_repository.get_event_from_opensearch(UUID(event_uuid))
+    if os_event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Event not found"
+        )
+
+    return events_repository.get_event_vulnerabilities(
+        db,
+        event_uuid=str(os_event.uuid),
+    )

@@ -1,0 +1,216 @@
+{
+    "mappings": {
+        "properties": {
+            "@timestamp": {
+                "type": "date"
+            },
+            "category": {
+                "type": "text",
+                "fields": {
+                    "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                    }
+                }
+            },
+            "data": {
+                "type": "text",
+                "fields": {
+                    "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                    }
+                }
+            },
+            "deleted": {
+                "type": "boolean"
+            },
+            "disable_correlation": {
+                "type": "boolean"
+            },
+            "distribution": {
+                "type": "long"
+            },
+            "event_uuid": {
+                "type": "keyword"
+            },
+            "expanded": {
+                "properties": {
+                    "ip2geo": {
+                        "properties": {
+                            "city_name": {
+                                "type": "text",
+                                "fields": {
+                                    "keyword": {
+                                        "type": "keyword",
+                                        "ignore_above": 256
+                                    }
+                                }
+                            },
+                            "continent_name": {
+                                "type": "text",
+                                "fields": {
+                                    "keyword": {
+                                        "type": "keyword",
+                                        "ignore_above": 256
+                                    }
+                                }
+                            },
+                            "country_iso_code": {
+                                "type": "text",
+                                "fields": {
+                                    "keyword": {
+                                        "type": "keyword",
+                                        "ignore_above": 256
+                                    }
+                                }
+                            },
+                            "country_name": {
+                                "type": "text",
+                                "fields": {
+                                    "keyword": {
+                                        "type": "keyword",
+                                        "ignore_above": 256
+                                    }
+                                }
+                            },
+                            "location": {
+                                "type": "geo_point"
+                            },
+                            "region_iso_code": {
+                                "type": "text",
+                                "fields": {
+                                    "keyword": {
+                                        "type": "keyword",
+                                        "ignore_above": 256
+                                    }
+                                }
+                            },
+                            "region_name": {
+                                "type": "text",
+                                "fields": {
+                                    "keyword": {
+                                        "type": "keyword",
+                                        "ignore_above": 256
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "ip": {
+                        "type": "ip"
+                    },
+                    "ip_range": { 
+                        "type": "ip_range" 
+                    }
+                }
+            },
+            "id": {
+                "type": "long"
+            },
+            "object_relation": {
+                "type": "text",
+                "fields": {
+                    "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                    }
+                }
+            },
+            "timestamp": {
+                "type": "long"
+            },
+            "to_ids": {
+                "type": "boolean"
+            },
+            "type": {
+                "type": "text",
+                "fields": {
+                    "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                    }
+                }
+            },
+            "uuid": {
+                "type": "text",
+                "fields": {
+                    "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                    }
+                }
+            },
+            "value": {
+                "type": "text",
+                "fields": {
+                    "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                    }
+                }
+            },
+            "sharing_group_id": {
+                "type": "long"
+            },
+            "comment": {
+                "type": "text",
+                "fields": {
+                    "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                    }
+                }
+            },
+            "first_seen": {
+                "type": "long"
+            },
+            "last_seen": {
+                "type": "long"
+            },
+            "object_uuid": {
+                "type": "keyword"
+            },
+            "tags": {
+                "properties": {
+                    "colour": {
+                        "type": "text",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    },
+                    "exportable": {
+                        "type": "boolean"
+                    },
+                    "hide_tag": {
+                        "type": "boolean"
+                    },
+                    "id": {
+                        "type": "long"
+                    },
+                    "is_custom_galaxy": {
+                        "type": "boolean"
+                    },
+                    "is_galaxy": {
+                        "type": "boolean"
+                    },
+                    "local_only": {
+                        "type": "boolean"
+                    },
+                    "name": {
+                        "type": "text",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
