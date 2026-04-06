@@ -1,13 +1,27 @@
 import json
 import logging
 import os
+from datetime import timedelta
 from pathlib import Path
 from typing import Optional
 
-from app.auth.auth import is_token_revoked
+from fastapi import APIRouter, Request, Security
+from fastmcp import FastMCP
+from fastmcp.server.auth import AccessToken, TokenVerifier
+from fastmcp.server.dependencies import get_access_token
+from jwt import decode as jwt_decode
+from jwt.exceptions import InvalidTokenError
+from sqlalchemy import func
+from sqlalchemy.sql import select
+
+from app.auth.auth import (create_access_token, get_scopes_for_user,
+                           is_token_revoked)
+from app.auth.security import get_current_active_user
 from app.database import SessionLocal
-from app.models.event import AnalysisLevel, DistributionLevel, ThreatLevel
+from app.models import hunt as hunt_models
+from app.models import notification as notification_models
 from app.models import tag as tag_models
+from app.models.event import AnalysisLevel, DistributionLevel, ThreatLevel
 from app.repositories import attributes as attributes_repository
 from app.repositories import correlations as correlations_repository
 from app.repositories import events as events_repository
@@ -17,31 +31,17 @@ from app.repositories import modules as modules_repository
 from app.repositories import reports as reports_repository
 from app.repositories import sightings as sightings_repository
 from app.repositories import users as users_repository
-from app.models import notification as notification_models
-from app.schemas import notifications as notification_schemas
-from app.models import hunt as hunt_models
 from app.schemas import event as event_schemas
 from app.schemas import hunt as hunt_schemas
 from app.schemas import module as module_schemas
+from app.schemas import notifications as notification_schemas
 from app.schemas import sighting as sighting_schemas
 from app.schemas import tag as tag_schemas
+from app.schemas import user as user_schemas
 from app.schemas.attribute import AttributeType
 from app.schemas.correlation import CorrelationQueryParams
 from app.services.opensearch import get_opensearch_client
 from app.settings import get_settings
-from app.auth.auth import create_access_token, get_scopes_for_user
-from app.auth.security import get_current_active_user
-from app.schemas import user as user_schemas
-from app.settings import get_settings
-from datetime import timedelta
-from fastapi import APIRouter, Request, Security
-from fastmcp import FastMCP
-from fastmcp.server.auth import AccessToken, TokenVerifier
-from fastmcp.server.dependencies import get_access_token
-from jwt import decode as jwt_decode
-from jwt.exceptions import InvalidTokenError
-from sqlalchemy import func
-from sqlalchemy.sql import select
 
 logger = logging.getLogger(__name__)
 
@@ -167,12 +167,12 @@ mcp = FastMCP(
         "complex queries.\n\n"
         "Tags on events and attributes come from two sources:\n"
         "- **Taxonomies** — structured labels like `tlp:white`, "
-        "`osint:lifetime=\"perpetual\"`, `cert-ist:threat_level=\"medium\"`. "
+        '`osint:lifetime="perpetual"`, `cert-ist:threat_level="medium"`. '
         "Use misp://taxonomies to browse available taxonomies.\n"
         "- **Galaxies** — knowledge-base entries attached as tags with the "
-        "format `misp-galaxy:<type>=\"<value>\"`, e.g. "
-        "`misp-galaxy:threat-actor=\"Turla Group\"`, "
-        "`misp-galaxy:mitre-attack-pattern=\"Email Collection\"`. "
+        'format `misp-galaxy:<type>="<value>"`, e.g. '
+        '`misp-galaxy:threat-actor="Turla Group"`, '
+        '`misp-galaxy:mitre-attack-pattern="Email Collection"`. '
         "Use misp://galaxies to browse available galaxy types.\n"
         "Both are searchable via the `tags.name` field in search_events and "
         "search_attributes.\n\n"
@@ -232,7 +232,7 @@ def _summarize_attribute_hit(source: dict) -> dict:
 def threat_report(keyword: str) -> str:
     """Build a threat intelligence report for a keyword or indicator."""
     return (
-        f"Search for events and attributes related to \"{keyword}\". "
+        f'Search for events and attributes related to "{keyword}". '
         "Summarize your findings as a threat intelligence report with: "
         "1) Overview of related events (dates, threat levels, descriptions). "
         "2) Key IOCs found (IPs, domains, hashes) with their types and geo info. "
@@ -246,7 +246,7 @@ def threat_report(keyword: str) -> str:
 def ioc_lookup(value: str) -> str:
     """Look up an IOC value and provide context."""
     return (
-        f"Look up the indicator \"{value}\": "
+        f'Look up the indicator "{value}": '
         "1) Detect its type using detect_indicator_type. "
         "2) Search for it in attributes. "
         "3) If found, get the parent event(s) for context. "
@@ -259,7 +259,7 @@ def ioc_lookup(value: str) -> str:
 def threat_actor_profile(name: str) -> str:
     """Profile a threat actor with all available intelligence."""
     return (
-        f"Build a profile for threat actor \"{name}\": "
+        f'Build a profile for threat actor "{name}": '
         "1) Search events tagged with this actor "
         f'(tags.name:misp-galaxy\\:threat-actor\\="{name}"). '
         "2) Search for related attributes/IOCs in those events. "
@@ -273,7 +273,7 @@ def threat_actor_profile(name: str) -> str:
 def country_exposure(country_code: str) -> str:
     """Analyze threat exposure for a country using GeoIP data."""
     return (
-        f"Analyze threat exposure for country code \"{country_code}\": "
+        f'Analyze threat exposure for country code "{country_code}": '
         f"1) Search for IP attributes geolocated in {country_code} "
         f"(type:ip* AND expanded.ip2geo.country_iso_code:{country_code}). "
         "2) Get the parent events to understand the threat context. "
@@ -301,9 +301,9 @@ def daily_summary() -> str:
 def enrich_indicator_prompt(value: str, module: str) -> str:
     """Enrich an indicator with a MISP expansion module and summarize the results."""
     return (
-        f"Enrich the indicator \"{value}\" using the \"{module}\" module: "
+        f'Enrich the indicator "{value}" using the "{module}" module: '
         f"1) Detect its MISP attribute type using detect_indicator_type. "
-        f"2) Call enrich_indicator with the detected type and module \"{module}\". "
+        f'2) Call enrich_indicator with the detected type and module "{module}". '
         "3) If the module returns an error, check that it is enabled and suggest alternatives. "
         "4) Summarize the enrichment results in a concise report: key facts, "
         "geo/ASN data if present, related domains or IPs, reputation scores, "
@@ -315,7 +315,12 @@ def enrich_indicator_prompt(value: str, module: str) -> str:
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": False, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def search_events(query: str, page: int = 1, size: int = 10) -> dict:
     """Search threat intelligence events by keyword or OpenSearch query string.
@@ -364,7 +369,12 @@ def search_events(query: str, page: int = 1, size: int = 10) -> dict:
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": False, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def search_attributes(query: str, page: int = 1, size: int = 10) -> dict:
     """Search indicators of compromise (IOCs) in the attribute index.
@@ -418,12 +428,19 @@ def search_attributes(query: str, page: int = 1, size: int = 10) -> dict:
         "total": result["total"],
         "page": page,
         "size": size,
-        "results": [_summarize_attribute_hit(hit["_source"]) for hit in result["results"]],
+        "results": [
+            _summarize_attribute_hit(hit["_source"]) for hit in result["results"]
+        ],
     }
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": False, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def get_event(event_uuid: str, summary: bool = True) -> dict:
     """Retrieve details of a threat intelligence event by UUID.
@@ -470,7 +487,12 @@ def get_event(event_uuid: str, summary: bool = True) -> dict:
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": False, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def get_correlations(
     attribute_value: Optional[str] = None,
@@ -493,7 +515,9 @@ def get_correlations(
       - score (float)
     """
     _check_scope("mcp:get_correlations")
-    logger.debug(f"Getting correlations for attribute_value: {attribute_value}, event_uuid: {event_uuid}")
+    logger.debug(
+        f"Getting correlations for attribute_value: {attribute_value}, event_uuid: {event_uuid}"
+    )
     if not attribute_value and not event_uuid:
         error_msg = "Provide either attribute_value or event_uuid"
         logger.debug(error_msg)
@@ -517,11 +541,11 @@ def get_correlations(
             "from": from_value,
             "size": size,
         }
-        response = client.search(
-            index="misp-attribute-correlations", body=search_body
-        )
+        response = client.search(index="misp-attribute-correlations", body=search_body)
         total = response["hits"]["total"]["value"]
-        logger.debug(f"Found {total} correlations for attribute value: {attribute_value}")
+        logger.debug(
+            f"Found {total} correlations for attribute value: {attribute_value}"
+        )
         return {
             "total": total,
             "page": page,
@@ -543,7 +567,12 @@ def get_correlations(
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": False, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def detect_indicator_type(values: list[str]) -> list[dict]:
     """Classify freetext values into MISP attribute types.
@@ -555,15 +584,18 @@ def detect_indicator_type(values: list[str]) -> list[dict]:
     _check_scope("mcp:detect_indicator_type")
     logger.debug(f"Detecting indicator types for {len(values)} values")
     values = values[:100]
-    result = [
-        {"value": v, "type": freetext_repository.detect_type(v)} for v in values
-    ]
+    result = [{"value": v, "type": freetext_repository.detect_type(v)} for v in values]
     logger.debug(f"Detected types for {len(result)} values")
     return result
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": False, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def get_statistics() -> dict:
     """Get an overview of the threat intelligence database.
@@ -574,12 +606,19 @@ def get_statistics() -> dict:
     _check_scope("mcp:get_statistics")
     logger.debug("Retrieving database statistics")
     result = correlations_repository.get_correlations_stats()
-    logger.debug(f"Retrieved statistics with {result.get('total_correlations', 0)} total correlations")
+    logger.debug(
+        f"Retrieved statistics with {result.get('total_correlations', 0)} total correlations"
+    )
     return result
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": False, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def get_tags(filter: Optional[str] = None) -> list[dict]:
     """List available tags for classifying threat intelligence.
@@ -602,8 +641,7 @@ def get_tags(filter: Optional[str] = None) -> list[dict]:
         results = db.execute(query).scalars().all()
 
         result = [
-            tag_schemas.Tag.model_validate(t).model_dump(mode="json")
-            for t in results
+            tag_schemas.Tag.model_validate(t).model_dump(mode="json") for t in results
         ]
         logger.debug(f"Retrieved {len(result)} tags")
         return result
@@ -612,7 +650,12 @@ def get_tags(filter: Optional[str] = None) -> list[dict]:
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": True, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def get_index_mapping(index: str) -> dict:
     """Get the OpenSearch index mapping to discover all available fields.
@@ -637,7 +680,12 @@ def get_index_mapping(index: str) -> dict:
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": False, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def search_galaxy(
     galaxy_type: str,
@@ -687,7 +735,9 @@ def search_galaxy(
         if any(query_lower in s for s in searchable):
             entry = {
                 "value": value_name,
-                "description": description[:300] + "..." if len(description) > 300 else description,
+                "description": (
+                    description[:300] + "..." if len(description) > 300 else description
+                ),
                 "uuid": v.get("uuid"),
             }
             if synonyms:
@@ -711,7 +761,12 @@ def search_galaxy(
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": False, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def search_taxonomy(query: str, size: int = 20) -> dict:
     """Search across all MISP taxonomies for matching tags.
@@ -745,7 +800,9 @@ def search_taxonomy(query: str, size: int = 20) -> dict:
         tax_desc = data.get("description", "")
 
         # Check if taxonomy-level metadata matches
-        tax_matches = query_lower in namespace.lower() or query_lower in tax_desc.lower()
+        tax_matches = (
+            query_lower in namespace.lower() or query_lower in tax_desc.lower()
+        )
 
         values_by_predicate = {}
         for group in data.get("values", []):
@@ -768,27 +825,47 @@ def search_taxonomy(query: str, size: int = 20) -> dict:
                     e_searchable = f"{e_value} {e_expanded} {e_desc}".lower()
 
                     if pred_matches or query_lower in e_searchable:
-                        matches.append({
-                            "tag": f'{namespace}:{pred_value}="{e_value}"',
-                            "expanded": f"{pred_expanded}: {e_expanded}",
-                            "namespace": namespace,
-                            "description": e_desc[:200] + "..." if len(e_desc) > 200 else e_desc or None,
-                        })
+                        matches.append(
+                            {
+                                "tag": f'{namespace}:{pred_value}="{e_value}"',
+                                "expanded": f"{pred_expanded}: {e_expanded}",
+                                "namespace": namespace,
+                                "description": (
+                                    e_desc[:200] + "..."
+                                    if len(e_desc) > 200
+                                    else e_desc or None
+                                ),
+                            }
+                        )
                         if len(matches) >= size:
-                            result = {"query": query, "total": len(matches), "results": matches}
+                            result = {
+                                "query": query,
+                                "total": len(matches),
+                                "results": matches,
+                            }
                             logger.debug(f"Found {len(matches)} taxonomy matches")
                             return result
             else:
                 # Predicate-only tag (no sub-values)
                 if pred_matches:
-                    matches.append({
-                        "tag": f"{namespace}:{pred_value}",
-                        "expanded": pred_expanded,
-                        "namespace": namespace,
-                        "description": pred_desc[:200] + "..." if len(pred_desc) > 200 else pred_desc or None,
-                    })
+                    matches.append(
+                        {
+                            "tag": f"{namespace}:{pred_value}",
+                            "expanded": pred_expanded,
+                            "namespace": namespace,
+                            "description": (
+                                pred_desc[:200] + "..."
+                                if len(pred_desc) > 200
+                                else pred_desc or None
+                            ),
+                        }
+                    )
                     if len(matches) >= size:
-                        result = {"query": query, "total": len(matches), "results": matches}
+                        result = {
+                            "query": query,
+                            "total": len(matches),
+                            "results": matches,
+                        }
                         logger.debug(f"Found {len(matches)} taxonomy matches")
                         return result
 
@@ -798,7 +875,12 @@ def search_taxonomy(query: str, size: int = 20) -> dict:
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": False, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def get_sightings(
     value: Optional[str] = None,
@@ -825,7 +907,9 @@ def get_sightings(
     and linked attribute UUID.
     """
     _check_scope("mcp:get_sightings")
-    logger.debug(f"Retrieving sightings for value: {value}, attribute_uuid: {attribute_uuid}, type: {type}")
+    logger.debug(
+        f"Retrieving sightings for value: {value}, attribute_uuid: {attribute_uuid}, type: {type}"
+    )
     size = min(size, 100)
     from_value = (page - 1) * size
 
@@ -834,7 +918,13 @@ def get_sightings(
         query_body: dict = {
             "from": from_value,
             "size": size,
-            "query": {"bool": {"must": [{"query_string": {"query": value, "default_field": "value"}}]}},
+            "query": {
+                "bool": {
+                    "must": [
+                        {"query_string": {"query": value, "default_field": "value"}}
+                    ]
+                }
+            },
             "sort": [{"@timestamp": {"order": "desc"}}],
         }
         if type:
@@ -855,7 +945,9 @@ def get_sightings(
     result = sightings_repository.get_sightings(
         params=params, page=page, from_value=from_value, size=size
     )
-    logger.debug(f"Found {result['total']} sightings for attribute_uuid: {attribute_uuid}")
+    logger.debug(
+        f"Found {result['total']} sightings for attribute_uuid: {attribute_uuid}"
+    )
     return {
         "total": result["total"],
         "page": page,
@@ -865,7 +957,12 @@ def get_sightings(
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": False, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def get_sighting_activity(
     value: str,
@@ -885,7 +982,9 @@ def get_sighting_activity(
     Returns time-series buckets with doc_count per interval.
     """
     _check_scope("mcp:get_sightings")
-    logger.debug(f"Getting sighting activity for value: {value}, period: {period}, interval: {interval}")
+    logger.debug(
+        f"Getting sighting activity for value: {value}, period: {period}, interval: {interval}"
+    )
     params = sighting_schemas.SightingActivityParams(
         value=value, period=period, interval=interval
     )
@@ -896,8 +995,7 @@ def get_sighting_activity(
         "period": period,
         "interval": interval,
         "buckets": [
-            {"date": b["key_as_string"], "count": b["doc_count"]}
-            for b in buckets
+            {"date": b["key_as_string"], "count": b["doc_count"]} for b in buckets
         ],
     }
     logger.debug(f"Retrieved sighting activity with {len(buckets)} time buckets")
@@ -905,7 +1003,12 @@ def get_sighting_activity(
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": False, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def list_hunts(filter: Optional[str] = None) -> list[dict]:
     """List saved threat hunts.
@@ -930,8 +1033,7 @@ def list_hunts(filter: Optional[str] = None) -> list[dict]:
         query = query.order_by(hunt_models.Hunt.created_at.desc()).limit(100)
         hunts = query.all()
         result = [
-            hunt_schemas.Hunt.model_validate(h).model_dump(mode="json")
-            for h in hunts
+            hunt_schemas.Hunt.model_validate(h).model_dump(mode="json") for h in hunts
         ]
         logger.debug(f"Retrieved {len(result)} hunts")
         return result
@@ -940,7 +1042,12 @@ def list_hunts(filter: Optional[str] = None) -> list[dict]:
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": False, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def get_hunt_results(hunt_id: int) -> dict:
     """Get the latest results from a saved hunt.
@@ -956,7 +1063,9 @@ def get_hunt_results(hunt_id: int) -> dict:
     logger.debug(f"Retrieving results for hunt ID: {hunt_id}")
     results = hunts_repository.get_hunt_results(hunt_id)
     if results is None:
-        error_msg = f"No results available for hunt {hunt_id}. It may not have been run yet."
+        error_msg = (
+            f"No results available for hunt {hunt_id}. It may not have been run yet."
+        )
         logger.debug(error_msg)
         return {"error": error_msg}
     logger.debug(f"Retrieved results for hunt ID: {hunt_id}")
@@ -964,7 +1073,12 @@ def get_hunt_results(hunt_id: int) -> dict:
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": False, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def get_hunt_history(hunt_id: int) -> dict:
     """Get the run history for a hunt showing match counts over time.
@@ -986,14 +1100,21 @@ def get_hunt_history(hunt_id: int) -> dict:
             "total_runs": len(history),
             "history": history,
         }
-        logger.debug(f"Retrieved history for hunt ID: {hunt_id} with {len(history)} runs")
+        logger.debug(
+            f"Retrieved history for hunt ID: {hunt_id} with {len(history)} runs"
+        )
         return result
     finally:
         db.close()
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True}
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    }
 )
 def run_hunt(hunt_id: int) -> dict:
     """Execute a saved hunt and return the results.
@@ -1026,7 +1147,12 @@ def run_hunt(hunt_id: int) -> dict:
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": True, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def get_event_reports(event_uuid: str) -> dict:
     """Retrieve event reports attached to a specific MISP event.
@@ -1046,7 +1172,12 @@ def get_event_reports(event_uuid: str) -> dict:
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": True, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def search_event_reports(
     query: Optional[str] = None,
@@ -1094,6 +1225,7 @@ def search_event_reports(
     }
 
     from opensearchpy.exceptions import NotFoundError as _NotFoundError
+
     try:
         response = client.search(index="misp-event-reports", body=query_body)
         hits = response["hits"]["hits"]
@@ -1108,7 +1240,12 @@ def search_event_reports(
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True}
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    }
 )
 def create_event_report(event_uuid: str, name: str, content: str) -> dict:
     """Create a new report attached to a MISP event.
@@ -1173,7 +1310,9 @@ def create_event_report(event_uuid: str, name: str, content: str) -> dict:
             event=event,
             report={"name": name, "content": content},
         )
-        logger.debug(f"Created event report {result.get('uuid')} for event {event_uuid}")
+        logger.debug(
+            f"Created event report {result.get('uuid')} for event {event_uuid}"
+        )
         return result
     finally:
         db.close()
@@ -1188,7 +1327,12 @@ _MODULE_ALIASES = {
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": True, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def enrich_indicator(value: str, type: str, module: str) -> dict:
     """Enrich an indicator using a MISP expansion module.
@@ -1231,7 +1375,12 @@ def enrich_indicator(value: str, type: str, module: str) -> dict:
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": False, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def list_modules(enabled_only: bool = True) -> list[dict]:
     """List available MISP enrichment modules.
@@ -1257,18 +1406,22 @@ def list_modules(enabled_only: bool = True) -> list[dict]:
     logger.debug(f"Listing modules, enabled_only={enabled_only}")
     db = SessionLocal()
     try:
-        modules = modules_repository.get_modules(db, enabled=True if enabled_only else None)
+        modules = modules_repository.get_modules(
+            db, enabled=True if enabled_only else None
+        )
         result = []
         for m in modules:
-            result.append({
-                "name": m.name,
-                "type": m.type,
-                "description": m.meta.description,
-                "module_type": m.meta.module_type,
-                "input_types": m.misp_attributes.input or [],
-                "output_types": m.misp_attributes.output or [],
-                "enabled": m.enabled,
-            })
+            result.append(
+                {
+                    "name": m.name,
+                    "type": m.type,
+                    "description": m.meta.description,
+                    "module_type": m.meta.module_type,
+                    "input_types": m.misp_attributes.input or [],
+                    "output_types": m.misp_attributes.output or [],
+                    "enabled": m.enabled,
+                }
+            )
         logger.debug(f"Retrieved {len(result)} modules")
         return result
     finally:
@@ -1276,7 +1429,12 @@ def list_modules(enabled_only: bool = True) -> list[dict]:
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": False, "destructiveHint": False, "idempotentHint": True}
+    annotations={
+        "readOnlyHint": True,
+        "openWorldHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
 )
 def get_notifications(
     read: Optional[bool] = None,
@@ -1334,11 +1492,15 @@ def get_notifications(
             select(func.count()).select_from(base_query.subquery())
         ).scalar()
 
-        rows = db.execute(
-            base_query.order_by(notification_models.Notification.created_at.desc())
-            .offset(offset)
-            .limit(size)
-        ).scalars().all()
+        rows = (
+            db.execute(
+                base_query.order_by(notification_models.Notification.created_at.desc())
+                .offset(offset)
+                .limit(size)
+            )
+            .scalars()
+            .all()
+        )
 
         results = [
             notification_schemas.Notification.model_validate(n).model_dump(mode="json")
@@ -1372,22 +1534,88 @@ def attribute_types() -> dict:
         "person": [],
         "other": [],
     }
-    hash_keywords = {"md5", "sha", "ssdeep", "imphash", "tlsh", "vhash", "pehash",
-                     "cdhash", "authentihash", "telfhash", "impfuzzy"}
-    network_keywords = {"ip-", "domain", "hostname", "url", "uri", "port", "AS",
-                        "mac-", "community-id", "snort", "bro", "zeek", "user-agent",
-                        "http-method", "ja3", "jarm", "hassh", "ssh-fingerprint",
-                        "favicon-mmh3", "cookie"}
+    hash_keywords = {
+        "md5",
+        "sha",
+        "ssdeep",
+        "imphash",
+        "tlsh",
+        "vhash",
+        "pehash",
+        "cdhash",
+        "authentihash",
+        "telfhash",
+        "impfuzzy",
+    }
+    network_keywords = {
+        "ip-",
+        "domain",
+        "hostname",
+        "url",
+        "uri",
+        "port",
+        "AS",
+        "mac-",
+        "community-id",
+        "snort",
+        "bro",
+        "zeek",
+        "user-agent",
+        "http-method",
+        "ja3",
+        "jarm",
+        "hassh",
+        "ssh-fingerprint",
+        "favicon-mmh3",
+        "cookie",
+    }
     email_keywords = {"email", "dkim"}
-    file_keywords = {"filename", "attachment", "malware-sample", "pattern-in-file",
-                     "pattern-in-memory", "size-in-bytes", "mime-type"}
-    detection_keywords = {"yara", "sigma", "stix2-pattern", "snort", "bro", "zeek",
-                          "kusto-query", "vulnerability", "cpe", "weakness", "cve"}
-    financial_keywords = {"btc", "dash", "xmr", "iban", "bic", "bank-account",
-                          "aba-rtn", "bin", "cc-number", "prtn"}
-    person_keywords = {"first-name", "last-name", "middle-name", "full-name",
-                       "date-of-birth", "gender", "nationality", "passport",
-                       "phone-number", "identity-card"}
+    file_keywords = {
+        "filename",
+        "attachment",
+        "malware-sample",
+        "pattern-in-file",
+        "pattern-in-memory",
+        "size-in-bytes",
+        "mime-type",
+    }
+    detection_keywords = {
+        "yara",
+        "sigma",
+        "stix2-pattern",
+        "snort",
+        "bro",
+        "zeek",
+        "kusto-query",
+        "vulnerability",
+        "cpe",
+        "weakness",
+        "cve",
+    }
+    financial_keywords = {
+        "btc",
+        "dash",
+        "xmr",
+        "iban",
+        "bic",
+        "bank-account",
+        "aba-rtn",
+        "bin",
+        "cc-number",
+        "prtn",
+    }
+    person_keywords = {
+        "first-name",
+        "last-name",
+        "middle-name",
+        "full-name",
+        "date-of-birth",
+        "gender",
+        "nationality",
+        "passport",
+        "phone-number",
+        "identity-card",
+    }
 
     for t in AttributeType:
         v = t.value
@@ -1452,9 +1680,7 @@ def analysis_levels() -> dict:
 @mcp.resource("misp://distribution-levels")
 def distribution_levels() -> dict:
     """MISP distribution level ID-to-label mapping."""
-    return {
-        str(d.value): d.name.replace("_", " ").title() for d in DistributionLevel
-    }
+    return {str(d.value): d.name.replace("_", " ").title() for d in DistributionLevel}
 
 
 @mcp.resource("misp://query-syntax")
@@ -1471,7 +1697,7 @@ def query_syntax() -> str:
         "- OR: `type:ip-src OR type:ip-dst`\n"
         "- NOT: `NOT type:domain`\n"
         "- Grouping: `(type:ip-src OR type:ip-dst) AND to_ids:true`\n"
-        "- Phrase: `category:\"Network activity\"`\n"
+        '- Phrase: `category:"Network activity"`\n'
         "- Escape colons in values: `tags.name:tlp\\:white`\n\n"
         "## Event fields\n"
         "- info (default), uuid, date, org_id, orgc_id\n"
@@ -1505,12 +1731,14 @@ def taxonomies_index() -> list[dict]:
         if not mt.is_file():
             continue
         data = json.loads(mt.read_text())
-        result.append({
-            "namespace": data.get("namespace", path.name),
-            "description": data.get("description", ""),
-            "version": data.get("version"),
-            "exclusive": data.get("exclusive", False),
-        })
+        result.append(
+            {
+                "namespace": data.get("namespace", path.name),
+                "description": data.get("description", ""),
+                "version": data.get("version"),
+                "exclusive": data.get("exclusive", False),
+            }
+        )
     return result
 
 
@@ -1528,22 +1756,26 @@ def taxonomy_detail(namespace: str) -> dict:
 
     predicates = []
     for p in data.get("predicates", []):
-        predicates.append({
-            "value": p["value"],
-            "expanded": p.get("expanded", p["value"]),
-            "description": p.get("description"),
-        })
+        predicates.append(
+            {
+                "value": p["value"],
+                "expanded": p.get("expanded", p["value"]),
+                "description": p.get("description"),
+            }
+        )
 
     values_by_predicate = {}
     for group in data.get("values", []):
         predicate = group["predicate"]
         entries = []
         for e in group.get("entry", []):
-            entries.append({
-                "value": e["value"],
-                "expanded": e.get("expanded", e["value"]),
-                "description": e.get("description"),
-            })
+            entries.append(
+                {
+                    "value": e["value"],
+                    "expanded": e.get("expanded", e["value"]),
+                    "description": e.get("description"),
+                }
+            )
         values_by_predicate[predicate] = entries
 
     return {
@@ -1567,13 +1799,15 @@ def galaxies_index() -> list[dict]:
     result = []
     for path in sorted(_GALAXIES_DIR.glob("*.json")):
         data = json.loads(path.read_text())
-        result.append({
-            "type": data.get("type", path.stem),
-            "name": data.get("name", ""),
-            "description": data.get("description", ""),
-            "namespace": data.get("namespace", "misp"),
-            "icon": data.get("icon"),
-        })
+        result.append(
+            {
+                "type": data.get("type", path.stem),
+                "name": data.get("name", ""),
+                "description": data.get("description", ""),
+                "namespace": data.get("namespace", "misp"),
+                "icon": data.get("icon"),
+            }
+        )
     return result
 
 

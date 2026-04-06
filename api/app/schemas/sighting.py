@@ -1,8 +1,9 @@
 from typing import Any, Optional
+
 from pydantic import BaseModel
 
-
 # ── Query parameter schemas ───────────────────────────────────────────────────
+
 
 class SightingQueryParams(BaseModel):
     attribute_uuid: Optional[str] = None
@@ -17,6 +18,7 @@ class SightingActivityParams(BaseModel):
 
 # ── Request schemas ───────────────────────────────────────────────────────────
 
+
 class SightingCreate(BaseModel):
     value: str
     type: str = "positive"
@@ -26,6 +28,7 @@ class SightingCreate(BaseModel):
 
 
 # ── Response schemas ──────────────────────────────────────────────────────────
+
 
 class SightingListResponse(BaseModel):
     page: int

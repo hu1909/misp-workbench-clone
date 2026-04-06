@@ -1,11 +1,13 @@
-from app.services.opensearch import get_opensearch_client
-from app.schemas import correlation as correlation_schemas
-from fastapi import HTTPException, status
-from opensearchpy import helpers as opensearch_helpers
-from app.services.runtime_settings import RuntimeSettings
-from app.worker import tasks
 import datetime
 import logging
+
+from fastapi import HTTPException, status
+from opensearchpy import helpers as opensearch_helpers
+
+from app.schemas import correlation as correlation_schemas
+from app.services.opensearch import get_opensearch_client
+from app.services.runtime_settings import RuntimeSettings
+from app.worker import tasks
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +26,12 @@ BULK_BUFFER = []
 BULK_SIZE = 100
 
 
-def get_correlations(params: correlation_schemas.CorrelationQueryParams, page: int = 0, from_value: int = 0, size: int = 100):
+def get_correlations(
+    params: correlation_schemas.CorrelationQueryParams,
+    page: int = 0,
+    from_value: int = 0,
+    size: int = 100,
+):
     OpenSearchClient = get_opensearch_client()
 
     query = {
@@ -101,7 +108,7 @@ def build_query(uuid, event_uuid, value, match_type, runtimeSettings: RuntimeSet
 
     if uuid is None:
         logger.error(f"build_query: UUID is None, event_uuid={event_uuid}")
-        raise ValueError("uuid cannot be None in build_query")    
+        raise ValueError("uuid cannot be None in build_query")
     if event_uuid is None:
         logger.error(f"build_query: event_uuid is None, uuid={uuid}")
         raise ValueError("event_uuid cannot be None in build_query")
@@ -460,10 +467,8 @@ def delete_event_correlations(event_uuid: str):
 
     return {"message": f"Correlations for event {event_uuid} deleted successfully."}
 
+
 def correlate_event(runtimeSettings: RuntimeSettings, event_uuid: str):
-    run_correlations(
-        runtimeSettings,
-        filters={"event_uuid": event_uuid}
-    )
+    run_correlations(runtimeSettings, filters={"event_uuid": event_uuid})
 
     return {"message": f"Correlations for event {event_uuid} created successfully."}

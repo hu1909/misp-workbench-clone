@@ -3,9 +3,10 @@ from enum import Enum
 from typing import Optional
 from uuid import UUID
 
+from pydantic import BaseModel, ConfigDict
+
 from app.models.event import DistributionLevel
 from app.schemas.tag import Tag
-from pydantic import BaseModel, ConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,7 @@ class AttributeUpdate(BaseModel):
     disable_correlation: Optional[bool] = None
     first_seen: Optional[int] = None
     last_seen: Optional[int] = None
+
 
 class AttributeType(str, Enum):
     TEXT = "text"
@@ -269,7 +271,9 @@ class AttributeType(str, Enum):
     PAYMENT_DETAILS = "payment-details"
     PLACE_PORT_OF_ORIGINAL_EMBARKATION = "place-port-of-original-embarkation"
     PLACE_PORT_OF_CLEARANCE = "place-port-of-clearance"
-    PLACE_PORT_OF_ONWARD_FOREIGN_DESTINATION = "place-port-of-onward-foreign-destination"
+    PLACE_PORT_OF_ONWARD_FOREIGN_DESTINATION = (
+        "place-port-of-onward-foreign-destination"
+    )
     PASSENGER_NAME_RECORD_LOCATOR_NUMBER = "passenger-name-record-locator-number"
     IDENTITY_CARD_NUMBER = "identity-card-number"
     SIZE_IN_BYTES = "size-in-bytes"

@@ -1,8 +1,9 @@
+from fastapi import APIRouter, Depends, Security
+
 from app.auth.security import get_current_active_user
-from app.services.user_settings_provider import get_user_settings
 from app.schemas import user as user_schemas
-from fastapi import APIRouter, Security, Depends
 from app.services.user_settings import UserSettings
+from app.services.user_settings_provider import get_user_settings
 
 router = APIRouter()
 

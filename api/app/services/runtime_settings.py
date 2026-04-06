@@ -1,6 +1,7 @@
+from app.defaults.runtime_settings_defaults import DEFAULT_SETTINGS
 from app.repositories import runtime_settings as runtime_settings_repository
 from app.services.base_settings import BaseSettings
-from app.defaults.runtime_settings_defaults import DEFAULT_SETTINGS
+
 
 class RuntimeSettings(BaseSettings):
     def __init__(self, db):

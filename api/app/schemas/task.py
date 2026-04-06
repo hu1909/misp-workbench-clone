@@ -9,6 +9,7 @@ class Task(BaseModel):
     status: str
     message: str
 
+
 class ScheduleTaskSchedule(BaseModel):
     type: str = "interval"
     # interval fields
@@ -20,11 +21,13 @@ class ScheduleTaskSchedule(BaseModel):
     day_of_month: str = "*"
     month_of_year: str = "*"
 
+
 class ScheduleTaskRequest(BaseModel):
     task_name: str
     params: dict = {}
     schedule: ScheduleTaskSchedule = None
     enabled: bool = False
+
 
 class UpdateScheduledTaskRequest(BaseModel):
     params: dict = None

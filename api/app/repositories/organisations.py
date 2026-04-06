@@ -4,12 +4,13 @@ from datetime import datetime
 from typing import Union
 from uuid import UUID
 
-from app.models import organisation as organisation_models
-from app.schemas import organisations as organisations_schemas
-from app.schemas import user as user_schemas
 from fastapi import HTTPException, status
 from pymisp import MISPOrganisation
 from sqlalchemy.orm import Session
+
+from app.models import organisation as organisation_models
+from app.schemas import organisations as organisations_schemas
+from app.schemas import user as user_schemas
 
 logger = logging.getLogger(__name__)
 

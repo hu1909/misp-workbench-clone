@@ -1,7 +1,12 @@
 import os
+import sys
 from datetime import timedelta
 
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
+
 from app.auth import auth
 from app.db.session import get_db
 from app.main import app
@@ -10,19 +15,15 @@ from app.models import feed as feed_models
 from app.models import galaxy as galaxy_models
 from app.models import hunt as hunt_models
 from app.models import module as module_models
+from app.models import notification as notification_models
 from app.models import organisation as organisation_models
+from app.models import role as role_models
 from app.models import server as server_models
 from app.models import sharing_groups as sharing_groups_models
 from app.models import tag as tag_models
-from app.models import notification as notification_models
 from app.models import taxonomy as taxonomy_models
 from app.models import user as user_models
-from app.models import role as role_models
 from app.settings import get_settings
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, declarative_base, sessionmaker
-import sys
 
 
 class ApiTester:
@@ -63,14 +64,20 @@ class ApiTester:
 
     def teardown_db(self, db: Session):
         db.query(galaxy_models.GalaxyElement).delete(synchronize_session=False)
-        db.query(galaxy_models.GalaxyClusterRelationTag).delete(synchronize_session=False)
+        db.query(galaxy_models.GalaxyClusterRelationTag).delete(
+            synchronize_session=False
+        )
         db.query(galaxy_models.GalaxyClusterRelation).delete(synchronize_session=False)
         db.query(galaxy_models.GalaxyCluster).delete(synchronize_session=False)
         db.query(galaxy_models.Galaxy).delete(synchronize_session=False)
         db.query(feed_models.Feed).delete(synchronize_session=False)
         db.query(tag_models.Tag).delete(synchronize_session=False)
-        db.query(sharing_groups_models.SharingGroupOrganisation).delete(synchronize_session=False)
-        db.query(sharing_groups_models.SharingGroupServer).delete(synchronize_session=False)
+        db.query(sharing_groups_models.SharingGroupOrganisation).delete(
+            synchronize_session=False
+        )
+        db.query(sharing_groups_models.SharingGroupServer).delete(
+            synchronize_session=False
+        )
         db.query(sharing_groups_models.SharingGroup).delete(synchronize_session=False)
         db.query(server_models.Server).delete(synchronize_session=False)
         db.query(hunt_models.HuntRunHistory).delete(synchronize_session=False)
@@ -199,6 +206,7 @@ class ApiTester:
     ):
         from datetime import datetime
         from uuid import UUID
+
         from app.repositories import events as events_repository
         from app.schemas import event as event_schemas
 
@@ -218,6 +226,7 @@ class ApiTester:
     @pytest.fixture(scope="class")
     def attribute_1(self, db: Session, event_1):
         from uuid import UUID
+
         from app.repositories import attributes as attributes_repository
         from app.schemas import attribute as attribute_schemas
 
@@ -237,7 +246,7 @@ class ApiTester:
     @pytest.fixture(scope="class")
     def object_1(self, db: Session, event_1):
         from datetime import datetime
-        from uuid import UUID as _UUID
+
         from app.services.opensearch import get_opensearch_client
 
         obj_uuid = "90e06ef6-26f8-40dd-9fb7-75897445e2a0"
@@ -263,13 +272,13 @@ class ApiTester:
         client.index(index="misp-objects", id=obj_uuid, body=obj_doc, refresh=True)
 
         from app.schemas import object as object_schemas
+
         yield object_schemas.Object.model_validate(obj_doc)
 
     @pytest.fixture(scope="class")
-    def object_attribute_1(
-        self, db: Session, event_1, object_1
-    ):
+    def object_attribute_1(self, db: Session, event_1, object_1):
         from uuid import UUID
+
         from app.repositories import attributes as attributes_repository
         from app.schemas import attribute as attribute_schemas
         from app.services.opensearch import get_opensearch_client
@@ -578,7 +587,10 @@ class ApiTester:
             entity_type="event",
             entity_uuid="ba4b11b6-dcce-4315-8fd0-67b69160ea76",
             read=False,
-            payload={"event_name": "Test Event", "event_uuid": "ba4b11b6-dcce-4315-8fd0-67b69160ea76"},
+            payload={
+                "event_name": "Test Event",
+                "event_uuid": "ba4b11b6-dcce-4315-8fd0-67b69160ea76",
+            },
             created_at=datetime(2024, 1, 1, 0, 0, 0),
         )
         db.add(notification_1)

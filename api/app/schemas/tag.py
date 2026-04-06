@@ -36,5 +36,3 @@ class TagUpdate(TagBase):
     is_galaxy: Optional[bool] = None
     is_custom_galaxy: Optional[bool] = None
     local_only: Optional[bool] = None
-
-

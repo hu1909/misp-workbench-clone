@@ -1,13 +1,10 @@
 import json
 
 import pytest
-from app.repositories.feeds import (
-    get_json_path,
-    parse_json_feed_items,
-    process_json_item_to_attribute,
-)
 from fastapi import HTTPException
 
+from app.repositories.feeds import (get_json_path, parse_json_feed_items,
+                                    process_json_item_to_attribute)
 
 # ── get_json_path ─────────────────────────────────────────────────────────────
 
@@ -98,17 +95,13 @@ class TestParseJsonFeedItems:
     def test_path_not_found_raises(self):
         content = json.dumps({"a": 1})
         with pytest.raises(HTTPException) as exc_info:
-            parse_json_feed_items(
-                content, {"format": "array", "items_path": "missing"}
-            )
+            parse_json_feed_items(content, {"format": "array", "items_path": "missing"})
         assert exc_info.value.status_code == 400
 
     def test_non_array_non_object_at_path_raises(self):
         content = json.dumps({"data": "string-not-array"})
         with pytest.raises(HTTPException) as exc_info:
-            parse_json_feed_items(
-                content, {"format": "array", "items_path": "data"}
-            )
+            parse_json_feed_items(content, {"format": "array", "items_path": "data"})
         assert exc_info.value.status_code == 400
 
     def test_default_format_is_array(self):
@@ -172,7 +165,9 @@ class TestProcessJsonItemToAttribute:
                 }
             }
         }
-        result = process_json_item_to_attribute({"ioc": "1.2.3.4", "kind": "ip"}, settings)
+        result = process_json_item_to_attribute(
+            {"ioc": "1.2.3.4", "kind": "ip"}, settings
+        )
         assert result["type"] == "ip-dst"
 
     def test_field_type_unmapped_value_passes_through(self):
@@ -204,7 +199,11 @@ class TestProcessJsonItemToAttribute:
             "jsonConfig": {
                 "attribute": {
                     "value": "ioc",
-                    "type": {"strategy": "field", "field": "missing_type", "mappings": []},
+                    "type": {
+                        "strategy": "field",
+                        "field": "missing_type",
+                        "mappings": [],
+                    },
                     "properties": {},
                 }
             }
@@ -398,5 +397,7 @@ class TestProcessJsonItemToAttribute:
                 }
             }
         }
-        result = process_json_item_to_attribute({"ioc": "1.2.3.4", "ids": "false"}, settings)
+        result = process_json_item_to_attribute(
+            {"ioc": "1.2.3.4", "ids": "false"}, settings
+        )
         assert result["to_ids"] is False

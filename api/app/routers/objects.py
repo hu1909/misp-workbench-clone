@@ -1,5 +1,10 @@
-from uuid import UUID
 from typing import Optional
+from uuid import UUID
+
+from fastapi import (APIRouter, Depends, HTTPException, Response, Security,
+                     status)
+from fastapi_pagination import Page, Params
+from sqlalchemy.orm import Session
 
 from app.auth.security import get_current_active_user
 from app.db.session import get_db
@@ -7,10 +12,6 @@ from app.repositories import events as events_repository
 from app.repositories import objects as objects_repository
 from app.schemas import object as object_schemas
 from app.schemas import user as user_schemas
-from app.worker import tasks
-from fastapi import APIRouter, Depends, HTTPException, Security, status, Response
-from sqlalchemy.orm import Session
-from fastapi_pagination import Page, Params
 
 router = APIRouter()
 
@@ -20,7 +21,11 @@ async def get_objects_parameters(
     deleted: Optional[bool] = False,
     template_uuid: list[UUID] = None,
 ):
-    return {"event_uuid": event_uuid, "deleted": deleted, "template_uuid": template_uuid}
+    return {
+        "event_uuid": event_uuid,
+        "deleted": deleted,
+        "template_uuid": template_uuid,
+    }
 
 
 @router.get("/objects/", response_model=Page[object_schemas.Object])
@@ -53,6 +58,7 @@ def get_object_by_id(
         )
     return os_object
 
+
 @router.post(
     "/objects/",
     response_model=object_schemas.Object,
@@ -65,7 +71,7 @@ def create_object(
         get_current_active_user, scopes=["objects:create"]
     ),
 ):
-    
+
     if object.event_uuid:
         event = events_repository.get_event_from_opensearch(object.event_uuid)
     else:
@@ -91,7 +97,9 @@ def update_object(
         get_current_active_user, scopes=["objects:update"]
     ),
 ):
-    return objects_repository.update_object(db=db, object_uuid=object_uuid, object=object)
+    return objects_repository.update_object(
+        db=db, object_uuid=object_uuid, object=object
+    )
 
 
 @router.delete("/objects/{object_uuid}", status_code=status.HTTP_204_NO_CONTENT)

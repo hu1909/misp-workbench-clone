@@ -1,20 +1,19 @@
+from typing import Union
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
+from fastapi_pagination import Page
+from fastapi_pagination.customization import (CustomizedPage, UseModelConfig,
+                                              UseParamsFields)
+from sqlalchemy.orm import Session
+
 from app.auth.security import get_current_active_user
 from app.db.session import get_db
 from app.repositories import taxonomies as taxonomies_repository
+from app.schemas import task as task_schemas
 from app.schemas import taxonomy as taxonomies_schemas
 from app.schemas import user as user_schemas
-from app.schemas import task as task_schemas
-from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
-from fastapi_pagination import Page
-from fastapi_pagination.customization import (
-    CustomizedPage,
-    UseModelConfig,
-    UseParamsFields,
-)
-from sqlalchemy.orm import Session
 from app.worker import tasks
-from typing import Union
-from uuid import UUID
 
 router = APIRouter()
 

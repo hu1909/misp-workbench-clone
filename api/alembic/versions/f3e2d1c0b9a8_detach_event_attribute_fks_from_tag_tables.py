@@ -19,9 +19,7 @@ depends_on = None
 
 
 def upgrade():
-    op.drop_constraint(
-        "event_tags_event_id_fkey", "event_tags", type_="foreignkey"
-    )
+    op.drop_constraint("event_tags_event_id_fkey", "event_tags", type_="foreignkey")
     op.drop_constraint(
         "attribute_tags_attribute_id_fkey", "attribute_tags", type_="foreignkey"
     )

@@ -1,41 +1,20 @@
-import logging.config
 
-from app.routers import (
-    attachments,
-    attributes,
-    auth,
-    diagnostics,
-    events,
-    feeds,
-    galaxies,
-    hunts,
-    mcp,
-    modules,
-    object_templates,
-    objects,
-    organisations,
-    roles,
-    servers,
-    sharing_groups,
-    tags,
-    taxonomies,
-    users,
-    reports,
-    tasks,
-    correlations,
-    sightings,
-    runtime_settings,
-    user_settings,
-    notifications,
-)
+import os
+# setup loggers
+# Import and use our custom logging setup
+import sys
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_pagination import add_pagination
 
-# setup loggers
-# Import and use our custom logging setup
-import sys
-import os
+from app.routers import (attachments, attributes, auth, correlations,
+                         diagnostics, events, feeds, galaxies, hunts, mcp,
+                         modules, notifications, object_templates, objects,
+                         organisations, reports, roles, runtime_settings,
+                         servers, sharing_groups, sightings, tags, tasks,
+                         taxonomies, user_settings, users)
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from setup_logging import setup_logging
 

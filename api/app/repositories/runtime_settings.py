@@ -1,5 +1,6 @@
-from app.models import setting as setting_models
 from sqlalchemy.orm import Session
+
+from app.models import setting as setting_models
 
 
 def get_settings(db: Session):

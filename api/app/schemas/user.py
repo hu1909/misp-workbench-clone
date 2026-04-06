@@ -1,9 +1,10 @@
 from typing import Optional
 
+from pydantic import BaseModel, ConfigDict
+
+from app.schemas.organisations import Organisation
 from app.schemas.role import Role
 from app.schemas.user_setting import UserSetting
-from app.schemas.organisations import Organisation
-from pydantic import BaseModel, ConfigDict
 
 
 class UserBase(BaseModel):

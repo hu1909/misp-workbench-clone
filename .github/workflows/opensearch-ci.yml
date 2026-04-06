@@ -28,7 +28,7 @@ jobs:
         run: npm install -g jsonlint
 
       - name: Lint JSON files
-        run: jsonlint -q **/*.json
+        run: jsonlint **/*.json && echo "All JSON files are valid"
 
 
   push-image:

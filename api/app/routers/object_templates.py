@@ -1,8 +1,9 @@
+from fastapi import APIRouter, Security
+
 from app.auth.security import get_current_active_user
-from app.services.object_templates import get_local_object_templates
 from app.schemas import object_template as object_template_schemas
 from app.schemas import user as user_schemas
-from fastapi import APIRouter, Security
+from app.services.object_templates import get_local_object_templates
 
 router = APIRouter()
 

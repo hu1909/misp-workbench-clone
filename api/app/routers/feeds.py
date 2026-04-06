@@ -1,6 +1,9 @@
 import json
-from pathlib import Path
 import logging
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, Security, status
+from sqlalchemy.orm import Session
 
 from app.auth.security import get_current_active_user
 from app.db.session import get_db
@@ -10,8 +13,6 @@ from app.repositories import tasks as tasks_repository
 from app.schemas import feed as feed_schemas
 from app.schemas import user as user_schemas
 from app.worker import tasks
-from fastapi import APIRouter, Depends, HTTPException, Security, status
-from sqlalchemy.orm import Session
 
 _DEFAULTS_PATH = Path(__file__).parent.parent / "defaults" / "default-feeds.json"
 
@@ -34,7 +35,10 @@ def _to_dict(value) -> dict:
                 if isinstance(inner, dict):
                     return inner
         except (json.JSONDecodeError, ValueError):
-            logging.debug("Failed to parse value as JSON or nested JSON in _to_dict; returning empty dict", exc_info=True)
+            logging.debug(
+                "Failed to parse value as JSON or nested JSON in _to_dict; returning empty dict",
+                exc_info=True,
+            )
     return {}
 
 
@@ -113,9 +117,7 @@ def explore_misp_feed(
     page: int = 0,
     limit: int = 20,
     db: Session = Depends(get_db),
-    user: user_schemas.User = Security(
-        get_current_active_user, scopes=["feeds:read"]
-    ),
+    user: user_schemas.User = Security(get_current_active_user, scopes=["feeds:read"]),
 ):
     return feeds_repository.explore_misp_feed(db, feed_id, page=page, limit=limit)
 
@@ -125,9 +127,7 @@ def explore_misp_feed_event(
     feed_id: int,
     event_uuid: str,
     db: Session = Depends(get_db),
-    user: user_schemas.User = Security(
-        get_current_active_user, scopes=["feeds:read"]
-    ),
+    user: user_schemas.User = Security(get_current_active_user, scopes=["feeds:read"]),
 ):
     return feeds_repository.explore_misp_feed_event(db, feed_id, event_uuid)
 
@@ -137,9 +137,7 @@ def fetch_single_feed_event(
     feed_id: int,
     event_uuid: str,
     db: Session = Depends(get_db),
-    user: user_schemas.User = Security(
-        get_current_active_user, scopes=["feeds:fetch"]
-    ),
+    user: user_schemas.User = Security(get_current_active_user, scopes=["feeds:fetch"]),
 ):
     return feeds_repository.fetch_single_feed_event(db, feed_id, event_uuid, user)
 
@@ -162,6 +160,7 @@ def preview_csv_feed(
     ),
 ):
     return feeds_repository.preview_csv_feed(settings=settings)
+
 
 @router.post("/feeds/json/preview")
 def preview_json_feed(

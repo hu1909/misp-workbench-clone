@@ -1,12 +1,14 @@
 from typing import Union
 from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Security, status
+from sqlalchemy.orm import Session
+
 from app.auth.security import get_current_active_user
 from app.db.session import get_db
 from app.repositories import organisations as organisations_repository
 from app.schemas import organisations as organisation_schemas
 from app.schemas import user as user_schemas
-from fastapi import APIRouter, Depends, HTTPException, Security, status
-from sqlalchemy.orm import Session
 
 router = APIRouter()
 
@@ -34,9 +36,13 @@ def get_organisation_by_id(
     ),
 ):
     if isinstance(organisation_id, int):
-        db_organisation = organisations_repository.get_organisation_by_id(db, organisation_id=organisation_id)
+        db_organisation = organisations_repository.get_organisation_by_id(
+            db, organisation_id=organisation_id
+        )
     else:
-        db_organisation = organisations_repository.get_organisation_by_uuid(db, organisation_uuid=organisation_id)
+        db_organisation = organisations_repository.get_organisation_by_uuid(
+            db, organisation_uuid=organisation_id
+        )
 
     if db_organisation is None:
         raise HTTPException(

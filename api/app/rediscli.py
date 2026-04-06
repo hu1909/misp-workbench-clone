@@ -1,7 +1,8 @@
-import redis
 from typing import Optional
-from app.settings import get_settings
 
+import redis
+
+from app.settings import get_settings
 
 Settings = get_settings()
 

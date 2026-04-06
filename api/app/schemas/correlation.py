@@ -1,8 +1,9 @@
 from typing import Any, Optional
+
 from pydantic import BaseModel
 
-
 # ── Query parameter schemas ───────────────────────────────────────────────────
+
 
 class CorrelationQueryParams(BaseModel):
     source_attribute_uuid: Optional[str] = None
@@ -13,6 +14,7 @@ class CorrelationQueryParams(BaseModel):
 
 
 # ── Response schemas ──────────────────────────────────────────────────────────
+
 
 class CorrelationListResponse(BaseModel):
     page: int

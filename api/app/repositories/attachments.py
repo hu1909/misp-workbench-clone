@@ -1,25 +1,22 @@
-import time
-import logging
 import hashlib
 import io
+import logging
 import os
+import time
 
-
+from fastapi import HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
-from app.services.s3 import get_s3_client
-from app.services.attachments import get_attachment, get_attachment_template
-from starlette import status
-import app.schemas.event as event_schemas
-from app.schemas import object as object_schemas
-import app.schemas.attribute as attribute_schemas
-from app.repositories import objects as objects_repository
-from app.repositories import attributes as attributes_repository
 from sqlalchemy.orm import Session
+from starlette import status
+
+import app.schemas.attribute as attribute_schemas
+import app.schemas.event as event_schemas
+from app.repositories import attributes as attributes_repository
+from app.repositories import objects as objects_repository
+from app.schemas import object as object_schemas
+from app.services.attachments import get_attachment, get_attachment_template
+from app.services.s3 import get_s3_client
 from app.settings import Settings, get_settings
-from fastapi import (
-    HTTPException,
-    UploadFile,
-)
 
 logger = logging.getLogger(__name__)
 

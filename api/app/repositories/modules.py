@@ -3,10 +3,11 @@ import logging
 from functools import lru_cache
 
 import requests
+from sqlalchemy.orm import Session
+
 from app.models import module as module_models
 from app.schemas import module as module_schemas
 from app.settings import Settings, get_settings
-from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

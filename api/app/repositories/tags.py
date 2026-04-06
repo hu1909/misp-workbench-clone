@@ -1,8 +1,3 @@
-from app.auth.utils import role_has_scope
-from app.models import tag as tag_models
-from app.models import user as user_models
-from app.schemas import tag as tag_schemas
-from app.services.opensearch import get_opensearch_client
 from fastapi import HTTPException, Query, status
 from fastapi_pagination.ext.sqlalchemy import paginate
 from opensearchpy.exceptions import NotFoundError
@@ -10,6 +5,12 @@ from pymisp import MISPTag
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import select
+
+from app.auth.utils import role_has_scope
+from app.models import tag as tag_models
+from app.models import user as user_models
+from app.schemas import tag as tag_schemas
+from app.services.opensearch import get_opensearch_client
 
 
 def get_tags(db: Session, hidden: bool = Query(None), filter: str = Query(None)):
@@ -113,7 +114,9 @@ def tag_attribute(
     try:
         doc = client.get(index="misp-attributes", id=attr_uuid)
     except NotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attribute not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Attribute not found"
+        )
 
     current_tags = doc["_source"].get("tags", [])
     if any(t.get("name") == tag.name for t in current_tags):
@@ -140,12 +143,16 @@ def untag_attribute(
     try:
         doc = client.get(index="misp-attributes", id=attr_uuid)
     except NotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attribute not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Attribute not found"
+        )
 
     current_tags = doc["_source"].get("tags", [])
     new_tags = [t for t in current_tags if t.get("name") != tag.name]
     if len(new_tags) == len(current_tags):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found"
+        )
 
     client.update(
         index="misp-attributes",
@@ -166,7 +173,9 @@ def tag_event(
     try:
         doc = client.get(index="misp-events", id=event_uuid)
     except NotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Event not found"
+        )
 
     current_tags = doc["_source"].get("tags", [])
     if any(t.get("name") == tag.name for t in current_tags):
@@ -193,12 +202,16 @@ def untag_event(
     try:
         doc = client.get(index="misp-events", id=event_uuid)
     except NotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Event not found"
+        )
 
     current_tags = doc["_source"].get("tags", [])
     new_tags = [t for t in current_tags if t.get("name") != tag.name]
     if len(new_tags) == len(current_tags):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found"
+        )
 
     client.update(
         index="misp-events",

@@ -1,6 +1,6 @@
 import boto3
-from app.settings import get_settings
 
+from app.settings import get_settings
 
 Settings = get_settings()
 

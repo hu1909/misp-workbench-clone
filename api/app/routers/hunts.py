@@ -1,13 +1,14 @@
-from typing import Optional, List
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Security, status
+from fastapi_pagination import Page
+from sqlalchemy.orm import Session
 
 from app.auth.security import get_current_active_user
 from app.db.session import get_db
 from app.repositories import hunts as hunts_repository
 from app.schemas import hunt as hunt_schemas
 from app.schemas import user as user_schemas
-from fastapi import APIRouter, Depends, HTTPException, Security, status
-from sqlalchemy.orm import Session
-from fastapi_pagination import Page
 
 router = APIRouter()
 
@@ -20,9 +21,7 @@ async def get_hunt_params(filter: Optional[str] = None) -> hunt_schemas.HuntQuer
 async def get_hunts(
     db: Session = Depends(get_db),
     params: hunt_schemas.HuntQueryParams = Depends(get_hunt_params),
-    user: user_schemas.User = Security(
-        get_current_active_user, scopes=["hunts:read"]
-    ),
+    user: user_schemas.User = Security(get_current_active_user, scopes=["hunts:read"]),
 ):
     return hunts_repository.get_hunts(db, user_id=user.id, params=params)
 
@@ -46,9 +45,7 @@ async def create_hunt(
 async def get_hunt(
     hunt_id: int,
     db: Session = Depends(get_db),
-    user: user_schemas.User = Security(
-        get_current_active_user, scopes=["hunts:read"]
-    ),
+    user: user_schemas.User = Security(get_current_active_user, scopes=["hunts:read"]),
 ):
     db_hunt = hunts_repository.get_hunt_by_id(db, hunt_id=hunt_id, user_id=user.id)
     if not db_hunt:
@@ -96,9 +93,7 @@ async def delete_hunt(
 async def get_hunt_results(
     hunt_id: int,
     db: Session = Depends(get_db),
-    user: user_schemas.User = Security(
-        get_current_active_user, scopes=["hunts:read"]
-    ),
+    user: user_schemas.User = Security(get_current_active_user, scopes=["hunts:read"]),
 ) -> hunt_schemas.HuntResults:
     db_hunt = hunts_repository.get_hunt_by_id(db, hunt_id=hunt_id, user_id=user.id)
     if not db_hunt:
@@ -113,13 +108,13 @@ async def get_hunt_results(
     return results
 
 
-@router.get("/hunts/{hunt_id}/history", response_model=List[hunt_schemas.HuntRunHistoryEntry])
+@router.get(
+    "/hunts/{hunt_id}/history", response_model=List[hunt_schemas.HuntRunHistoryEntry]
+)
 async def get_hunt_history(
     hunt_id: int,
     db: Session = Depends(get_db),
-    user: user_schemas.User = Security(
-        get_current_active_user, scopes=["hunts:read"]
-    ),
+    user: user_schemas.User = Security(get_current_active_user, scopes=["hunts:read"]),
 ):
     db_hunt = hunts_repository.get_hunt_by_id(db, hunt_id=hunt_id, user_id=user.id)
     if not db_hunt:
@@ -149,9 +144,7 @@ async def delete_hunt_history(
 async def run_hunt(
     hunt_id: int,
     db: Session = Depends(get_db),
-    user: user_schemas.User = Security(
-        get_current_active_user, scopes=["hunts:run"]
-    ),
+    user: user_schemas.User = Security(get_current_active_user, scopes=["hunts:run"]),
 ) -> hunt_schemas.HuntRunResult:
     result = hunts_repository.execute_hunt(db, hunt_id=hunt_id, user_id=user.id)
     if result is None:

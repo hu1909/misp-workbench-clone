@@ -1,5 +1,6 @@
-from app.models import user_setting as user_settings_models
 from sqlalchemy.orm import Session
+
+from app.models import user_setting as user_settings_models
 
 
 def get_user_settings(db: Session, user_id: str):
@@ -8,6 +9,7 @@ def get_user_settings(db: Session, user_id: str):
         .filter(user_settings_models.UserSetting.user_id == user_id)
         .all()
     )
+
 
 def get_user_setting(db: Session, user_id: int, namespace: str):
     return (
@@ -23,12 +25,14 @@ def set_user_setting(db: Session, user_id: str, namespace: str, value: dict):
     if setting:
         setting.value = value
     else:
-        setting = user_settings_models.UserSetting(user_id=user_id, namespace=namespace, value=value)
-    
+        setting = user_settings_models.UserSetting(
+            user_id=user_id, namespace=namespace, value=value
+        )
+
     db.add(setting)
     db.commit()
     db.refresh(setting)
-    
+
     return setting
 
 

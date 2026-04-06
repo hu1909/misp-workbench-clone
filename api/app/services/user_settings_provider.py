@@ -1,13 +1,13 @@
+from fastapi import Depends, Security
+from sqlalchemy.orm import Session
+
+from app.auth.security import get_current_active_user
+from app.db.session import get_db
 from app.schemas import user as user_schemas
 from app.services.runtime_settings import RuntimeSettings
-from app.services.user_settings import UserSettings
-from fastapi import Depends
-from sqlalchemy.orm import Session
-from app.auth.security import get_current_active_user
-from app.schemas import user as user_schemas
-from fastapi import Security, Depends
-from app.db.session import get_db
 from app.services.runtime_settings_provider import get_runtime_settings
+from app.services.user_settings import UserSettings
+
 
 def get_user_settings(
     user: user_schemas.User = Security(

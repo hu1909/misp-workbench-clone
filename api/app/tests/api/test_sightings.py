@@ -1,11 +1,11 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from app.auth import auth
-from app.tests.api_tester import ApiTester
 from fastapi import status
 from fastapi.testclient import TestClient
 
+from app.auth import auth
+from app.tests.api_tester import ApiTester
 
 OPENSEARCH_PATCH = "app.repositories.sightings.get_opensearch_client"
 TASKS_PATCH = "app.repositories.sightings.tasks.handle_created_sighting"
@@ -15,8 +15,20 @@ MOCK_SEARCH_RESPONSE = {
         "total": {"value": 2},
         "max_score": 1.5,
         "hits": [
-            {"_source": {"value": "1.2.3.4", "type": "positive", "attribute_uuid": "abc-123"}},
-            {"_source": {"value": "5.6.7.8", "type": "positive", "attribute_uuid": "def-456"}},
+            {
+                "_source": {
+                    "value": "1.2.3.4",
+                    "type": "positive",
+                    "attribute_uuid": "abc-123",
+                }
+            },
+            {
+                "_source": {
+                    "value": "5.6.7.8",
+                    "type": "positive",
+                    "attribute_uuid": "def-456",
+                }
+            },
         ],
     },
     "took": 3,
@@ -27,8 +39,16 @@ MOCK_HISTOGRAM_RESPONSE = {
     "aggregations": {
         "sightings_over_time": {
             "buckets": [
-                {"key_as_string": "2024-01-01T00:00:00.000Z", "key": 1704067200000, "doc_count": 3},
-                {"key_as_string": "2024-01-01T01:00:00.000Z", "key": 1704070800000, "doc_count": 7},
+                {
+                    "key_as_string": "2024-01-01T00:00:00.000Z",
+                    "key": 1704067200000,
+                    "doc_count": 3,
+                },
+                {
+                    "key_as_string": "2024-01-01T01:00:00.000Z",
+                    "key": 1704070800000,
+                    "doc_count": 7,
+                },
             ]
         }
     }
@@ -63,7 +83,9 @@ class TestSightingsResource(ApiTester):
         assert len(data["results"]) == 2
 
     @pytest.mark.parametrize("scopes", [[]])
-    def test_get_sightings_unauthorized(self, client: TestClient, auth_token: auth.Token):
+    def test_get_sightings_unauthorized(
+        self, client: TestClient, auth_token: auth.Token
+    ):
         response = client.get(
             "/sightings/", headers={"Authorization": "Bearer " + auth_token}
         )
@@ -84,7 +106,9 @@ class TestSightingsResource(ApiTester):
         assert response.status_code == status.HTTP_200_OK
         # verify the attribute_uuid filter was added to the query
         call_body = mock_os.search.call_args.kwargs["body"]
-        assert {"term": {"attribute_uuid.keyword": "abc-123"}} in call_body["query"]["bool"]["must"]
+        assert {"term": {"attribute_uuid.keyword": "abc-123"}} in call_body["query"][
+            "bool"
+        ]["must"]
 
     @pytest.mark.parametrize("scopes", [["sightings:read"]])
     def test_get_sightings_filter_by_type(
@@ -100,12 +124,12 @@ class TestSightingsResource(ApiTester):
 
         assert response.status_code == status.HTTP_200_OK
         call_body = mock_os.search.call_args.kwargs["body"]
-        assert {"term": {"type.keyword": "positive"}} in call_body["query"]["bool"]["must"]
+        assert {"term": {"type.keyword": "positive"}} in call_body["query"]["bool"][
+            "must"
+        ]
 
     @pytest.mark.parametrize("scopes", [["sightings:read"]])
-    def test_get_sightings_pagination(
-        self, client: TestClient, auth_token: auth.Token
-    ):
+    def test_get_sightings_pagination(self, client: TestClient, auth_token: auth.Token):
         mock_os = make_opensearch_mock()
         with patch(OPENSEARCH_PATCH, return_value=mock_os):
             response = client.get(
@@ -119,18 +143,17 @@ class TestSightingsResource(ApiTester):
         assert data["page"] == 2
         assert data["size"] == 5
         call_body = mock_os.search.call_args.kwargs["body"]
-        assert call_body["from"] == 5   # (page-1) * size
+        assert call_body["from"] == 5  # (page-1) * size
         assert call_body["size"] == 5
 
     # ── POST /sightings/ ──────────────────────────────────────────────────────
 
     @pytest.mark.parametrize("scopes", [["sightings:create"]])
-    def test_create_sighting_single(
-        self, client: TestClient, auth_token: auth.Token
-    ):
+    def test_create_sighting_single(self, client: TestClient, auth_token: auth.Token):
         mock_os = make_opensearch_mock()
-        with patch(OPENSEARCH_PATCH, return_value=mock_os), \
-             patch(TASKS_PATCH) as mock_task:
+        with patch(OPENSEARCH_PATCH, return_value=mock_os), patch(
+            TASKS_PATCH
+        ) as mock_task:
             response = client.post(
                 "/sightings/",
                 json={"value": "1.2.3.4", "type": "positive"},
@@ -148,8 +171,7 @@ class TestSightingsResource(ApiTester):
         self, client: TestClient, auth_token: auth.Token
     ):
         mock_os = make_opensearch_mock()
-        with patch(OPENSEARCH_PATCH, return_value=mock_os), \
-             patch(TASKS_PATCH):
+        with patch(OPENSEARCH_PATCH, return_value=mock_os), patch(TASKS_PATCH):
             response = client.post(
                 "/sightings/",
                 json={"value": "evil.com"},
@@ -161,13 +183,13 @@ class TestSightingsResource(ApiTester):
         assert indexed_body["type"] == "positive"
 
     @pytest.mark.parametrize("scopes", [["sightings:create"]])
-    def test_create_sightings_bulk(
-        self, client: TestClient, auth_token: auth.Token
-    ):
+    def test_create_sightings_bulk(self, client: TestClient, auth_token: auth.Token):
         mock_os = make_opensearch_mock()
-        with patch(OPENSEARCH_PATCH, return_value=mock_os), \
-             patch(TASKS_PATCH) as mock_task, \
-             patch("app.repositories.sightings.opensearch_helpers.bulk", return_value=(2, [])):
+        with patch(OPENSEARCH_PATCH, return_value=mock_os), patch(
+            TASKS_PATCH
+        ) as mock_task, patch(
+            "app.repositories.sightings.opensearch_helpers.bulk", return_value=(2, [])
+        ):
             response = client.post(
                 "/sightings/",
                 json=[
@@ -207,9 +229,7 @@ class TestSightingsResource(ApiTester):
     # ── GET /sightings/histogram ──────────────────────────────────────────────
 
     @pytest.mark.parametrize("scopes", [["sightings:read"]])
-    def test_get_sighting_histogram(
-        self, client: TestClient, auth_token: auth.Token
-    ):
+    def test_get_sighting_histogram(self, client: TestClient, auth_token: auth.Token):
         mock_os = make_opensearch_mock(MOCK_HISTOGRAM_RESPONSE)
         with patch(OPENSEARCH_PATCH, return_value=mock_os):
             response = client.get(
@@ -240,7 +260,10 @@ class TestSightingsResource(ApiTester):
         call_body = mock_os.search.call_args.kwargs["body"]
         agg = call_body["aggs"]["sightings_over_time"]["date_histogram"]
         assert agg["fixed_interval"] == "1d"
-        assert "now-30d/d" in call_body["query"]["bool"]["must"][2]["range"]["@timestamp"]["gte"]
+        assert (
+            "now-30d/d"
+            in call_body["query"]["bool"]["must"][2]["range"]["@timestamp"]["gte"]
+        )
 
     @pytest.mark.parametrize("scopes", [["sightings:read"]])
     def test_get_sighting_histogram_missing_value(
@@ -266,9 +289,7 @@ class TestSightingsResource(ApiTester):
     # ── GET /sightings/stats ──────────────────────────────────────────────────
 
     @pytest.mark.parametrize("scopes", [["sightings:read"]])
-    def test_get_sighting_stats(
-        self, client: TestClient, auth_token: auth.Token
-    ):
+    def test_get_sighting_stats(self, client: TestClient, auth_token: auth.Token):
         mock_os = make_opensearch_mock()
         mock_os.search.side_effect = [MOCK_STATS_RESPONSE, MOCK_PREV_STATS_RESPONSE]
         with patch(OPENSEARCH_PATCH, return_value=mock_os):

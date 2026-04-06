@@ -1,31 +1,32 @@
 import logging
 import os
 import smtplib
-from email.message import EmailMessage
 from datetime import datetime
+from email.message import EmailMessage
 from uuid import UUID
 
-from app.database import SQLALCHEMY_DATABASE_URL
-from app.services.opensearch import get_opensearch_client
-from app.services.redis import get_redis_client
-from app.settings import get_settings
-from app.services.runtime_settings_provider import get_runtime_settings
-from app.repositories import events as events_repository
-from app.repositories import feeds as feeds_repository
-from app.repositories import freetext as freetext_repository
-from app.repositories import servers as servers_repository
-from app.repositories import objects as objects_repository
-from app.repositories import users as users_repository
-from app.repositories import correlations as correlations_repository
-from app.repositories import attributes as attributes_repository
-from app.repositories import notifications as notifications_repository
-from app.repositories import galaxies as galaxies_repository
-from app.repositories import hunts as hunts_repository
-from app.repositories import taxonomies as taxonomies_repository
-from app.schemas import attribute as attribute_schemas
 from celery import Celery
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+
+from app.database import SQLALCHEMY_DATABASE_URL
+from app.repositories import attributes as attributes_repository
+from app.repositories import correlations as correlations_repository
+from app.repositories import events as events_repository
+from app.repositories import feeds as feeds_repository
+from app.repositories import freetext as freetext_repository
+from app.repositories import galaxies as galaxies_repository
+from app.repositories import hunts as hunts_repository
+from app.repositories import notifications as notifications_repository
+from app.repositories import objects as objects_repository
+from app.repositories import servers as servers_repository
+from app.repositories import taxonomies as taxonomies_repository
+from app.repositories import users as users_repository
+from app.schemas import attribute as attribute_schemas
+from app.services.opensearch import get_opensearch_client
+from app.services.redis import get_redis_client
+from app.services.runtime_settings_provider import get_runtime_settings
+from app.settings import get_settings
 
 # Celery configuration
 celery_app = Celery("misp-workbench")
@@ -143,7 +144,9 @@ def handle_created_event(event_uuid: str):
     os_event = events_repository.get_event_from_opensearch(UUID(event_uuid))
     if os_event is not None:
         with Session(engine) as db:
-            notifications_repository.create_event_notifications(db, "created", event=os_event)
+            notifications_repository.create_event_notifications(
+                db, "created", event=os_event
+            )
 
     return True
 
@@ -161,7 +164,9 @@ def handle_updated_event(event_uuid: str):
             refresh=True,
         )
         with Session(engine) as db:
-            notifications_repository.create_event_notifications(db, "updated", event=os_event)
+            notifications_repository.create_event_notifications(
+                db, "updated", event=os_event
+            )
 
     return True
 
@@ -173,7 +178,9 @@ def handle_deleted_event(event_uuid: str):
     os_event = events_repository.get_event_from_opensearch(UUID(event_uuid))
     if os_event is not None:
         with Session(engine) as db:
-            notifications_repository.create_event_notifications(db, "deleted", event=os_event)
+            notifications_repository.create_event_notifications(
+                db, "deleted", event=os_event
+            )
 
     delete_indexed_event(event_uuid)
 
@@ -187,9 +194,13 @@ def handle_created_attribute(attribute_uuid: str, object_uuid, event_uuid: str |
         if object_uuid is None and event_uuid:
             events_repository.increment_attribute_count(db, event_uuid)
 
-        os_attr = attributes_repository.get_attribute_from_opensearch(UUID(attribute_uuid))
+        os_attr = attributes_repository.get_attribute_from_opensearch(
+            UUID(attribute_uuid)
+        )
         if os_attr is not None:
-            notifications_repository.create_attribute_notifications(db, "created", attribute=os_attr)
+            notifications_repository.create_attribute_notifications(
+                db, "created", attribute=os_attr
+            )
 
     return True
 
@@ -198,9 +209,13 @@ def handle_created_attribute(attribute_uuid: str, object_uuid, event_uuid: str |
 def handle_updated_attribute(attribute_uuid: str, object_uuid, event_uuid: str | None):
     logger.info("handling updated attribute uuid=%s job started", attribute_uuid)
     with Session(engine) as db:
-        os_attr = attributes_repository.get_attribute_from_opensearch(UUID(attribute_uuid))
+        os_attr = attributes_repository.get_attribute_from_opensearch(
+            UUID(attribute_uuid)
+        )
         if os_attr is not None:
-            notifications_repository.create_attribute_notifications(db, "updated", attribute=os_attr)
+            notifications_repository.create_attribute_notifications(
+                db, "updated", attribute=os_attr
+            )
 
     return True
 
@@ -212,9 +227,13 @@ def handle_deleted_attribute(attribute_uuid: str, object_uuid, event_uuid: str |
         if object_uuid is None and event_uuid:
             events_repository.decrement_attribute_count(db, event_uuid)
 
-        os_attr = attributes_repository.get_attribute_from_opensearch(UUID(attribute_uuid))
+        os_attr = attributes_repository.get_attribute_from_opensearch(
+            UUID(attribute_uuid)
+        )
         if os_attr is not None:
-            notifications_repository.create_attribute_notifications(db, "deleted", attribute=os_attr)
+            notifications_repository.create_attribute_notifications(
+                db, "deleted", attribute=os_attr
+            )
 
     return True
 
@@ -229,7 +248,9 @@ def handle_created_object(object_uuid: str, event_uuid: str | None):
 
         os_obj = objects_repository.get_object_from_opensearch(UUID(object_uuid))
         if os_obj is not None:
-            notifications_repository.create_object_notifications(db, "created", object=os_obj)
+            notifications_repository.create_object_notifications(
+                db, "created", object=os_obj
+            )
 
     return True
 
@@ -241,7 +262,9 @@ def handle_updated_object(object_uuid: str, event_uuid: str | None):
     with Session(engine) as db:
         os_obj = objects_repository.get_object_from_opensearch(UUID(object_uuid))
         if os_obj is not None:
-            notifications_repository.create_object_notifications(db, "updated", object=os_obj)
+            notifications_repository.create_object_notifications(
+                db, "updated", object=os_obj
+            )
 
     return True
 
@@ -256,7 +279,9 @@ def handle_deleted_object(object_uuid: str, event_uuid: str | None):
 
         os_obj = objects_repository.get_object_from_opensearch(UUID(object_uuid))
         if os_obj is not None:
-            notifications_repository.create_object_notifications(db, "deleted", object=os_obj)
+            notifications_repository.create_object_notifications(
+                db, "deleted", object=os_obj
+            )
 
     return True
 
@@ -337,7 +362,9 @@ def fetch_csv_feed(feed_id: int, user_id: int):
 
         db_event = feeds_repository.get_or_create_feed_event(db, db_feed, user)
 
-        lines = feeds_repository.fetch_csv_content_from_network(db_feed.url, extra_headers=db_feed.headers)
+        lines = feeds_repository.fetch_csv_content_from_network(
+            db_feed.url, extra_headers=db_feed.headers
+        )
         rows = feeds_repository.parse_csv_feed_lines(db_feed.settings, lines)
 
         for row in rows:
@@ -466,7 +493,11 @@ def fetch_json_feed(feed_id: int, user_id: int):
                     item, db_feed.settings
                 )
 
-                if attribute.get("error") or not attribute.get("type") or not attribute.get("value"):
+                if (
+                    attribute.get("error")
+                    or not attribute.get("type")
+                    or not attribute.get("value")
+                ):
                     failed_items += 1
                     continue
 
@@ -618,7 +649,9 @@ def handle_published_event(event_uuid: str):
     os_event = events_repository.get_event_from_opensearch(UUID(event_uuid))
     if os_event is not None:
         with Session(engine) as db:
-            notifications_repository.create_event_notifications(db, "published", event=os_event)
+            notifications_repository.create_event_notifications(
+                db, "published", event=os_event
+            )
 
     logger.info("handling published event uuid=%s job finished", event_uuid)
     return True
@@ -631,7 +664,9 @@ def handle_unpublished_event(event_uuid: str):
     os_event = events_repository.get_event_from_opensearch(UUID(event_uuid))
     if os_event is not None:
         with Session(engine) as db:
-            notifications_repository.create_event_notifications(db, "unpublished", event=os_event)
+            notifications_repository.create_event_notifications(
+                db, "unpublished", event=os_event
+            )
 
     logger.info("handling unpublished event uuid=%s job finished", event_uuid)
     return True
@@ -643,7 +678,9 @@ def handle_toggled_event_correlation(event_uuid: str, disable_correlation: bool)
 
     os_event = events_repository.get_event_from_opensearch(UUID(event_uuid))
     if os_event is None:
-        logger.warning("handle_toggled_event_correlation: event %s not found", event_uuid)
+        logger.warning(
+            "handle_toggled_event_correlation: event %s not found", event_uuid
+        )
         return True
 
     if disable_correlation:

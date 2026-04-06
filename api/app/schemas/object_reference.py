@@ -47,7 +47,9 @@ class ObjectReference(ObjectReferenceBase):
             "object_uuid": str(self.object_uuid) if self.object_uuid else None,
             "event_uuid": str(self.event_uuid) if self.event_uuid else None,
             "source_uuid": str(self.source_uuid) if self.source_uuid else None,
-            "referenced_uuid": str(self.referenced_uuid) if self.referenced_uuid else None,
+            "referenced_uuid": (
+                str(self.referenced_uuid) if self.referenced_uuid else None
+            ),
             "referenced_id": self.referenced_id,
             "referenced_type": ref_type_name,
             "relationship_type": self.relationship_type,

@@ -1,5 +1,6 @@
-from app.database import Base
 from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, String
+
+from app.database import Base
 
 
 class ModuleSettings(Base):

@@ -1,8 +1,9 @@
 import uuid
 
-from app.database import Base
 from sqlalchemy import Boolean, Column, DateTime, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
+
+from app.database import Base
 
 
 class Organisation(Base):

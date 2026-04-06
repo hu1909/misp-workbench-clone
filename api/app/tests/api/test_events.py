@@ -1,15 +1,15 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import status
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
 from app.auth import auth
 from app.models import organisation as organisation_models
 from app.models import tag as tag_models
 from app.models import user as user_models
 from app.tests.api_tester import ApiTester
-from fastapi import status
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
-
 
 OPENSEARCH_PATCH = "app.repositories.events.get_opensearch_client"
 
@@ -17,8 +17,16 @@ MOCK_HISTOGRAM_RESPONSE = {
     "aggregations": {
         "events_over_time": {
             "buckets": [
-                {"key_as_string": "2024-01-01T00:00:00.000Z", "key": 1704067200000, "doc_count": 5},
-                {"key_as_string": "2024-01-02T00:00:00.000Z", "key": 1704153600000, "doc_count": 2},
+                {
+                    "key_as_string": "2024-01-01T00:00:00.000Z",
+                    "key": 1704067200000,
+                    "doc_count": 5,
+                },
+                {
+                    "key_as_string": "2024-01-02T00:00:00.000Z",
+                    "key": 1704153600000,
+                    "doc_count": 2,
+                },
             ]
         }
     }
@@ -193,6 +201,7 @@ class TestEventsResource(ApiTester):
         assert response.status_code == status.HTTP_201_CREATED
 
         from app.services.opensearch import get_opensearch_client
+
         os_client = get_opensearch_client()
         os_event = os_client.get(index="misp-events", id=str(event_1.uuid))
         tag_names = [t.get("name") for t in os_event["_source"].get("tags", [])]
@@ -215,6 +224,7 @@ class TestEventsResource(ApiTester):
         assert response.status_code == status.HTTP_204_NO_CONTENT
 
         from app.services.opensearch import get_opensearch_client
+
         os_client = get_opensearch_client()
         os_event = os_client.get(index="misp-events", id=str(event_1.uuid))
         tag_names = [t.get("name") for t in os_event["_source"].get("tags", [])]
@@ -230,6 +240,7 @@ class TestEventsResource(ApiTester):
         """A second event used for force-delete and other destructive tests."""
         from datetime import datetime
         from uuid import UUID
+
         from app.repositories import events as events_repository
         from app.schemas import event as event_schemas
 
@@ -254,6 +265,7 @@ class TestEventsResource(ApiTester):
         """A stable event used for filter/search tests that won't be mutated."""
         from datetime import datetime
         from uuid import UUID
+
         from app.repositories import events as events_repository
         from app.schemas import event as event_schemas
 
@@ -412,6 +424,7 @@ class TestEventsResource(ApiTester):
         assert response.status_code == status.HTTP_204_NO_CONTENT
 
         from app.services.opensearch import get_opensearch_client
+
         os_client = get_opensearch_client()
         response_os = os_client.search(
             index="misp-events",
@@ -728,7 +741,10 @@ class TestEventsResource(ApiTester):
 
         assert response.status_code == status.HTTP_200_OK
         call_body = mock_os.search.call_args.kwargs["body"]
-        assert call_body["aggs"]["events_over_time"]["date_histogram"]["calendar_interval"] == "1d"
+        assert (
+            call_body["aggs"]["events_over_time"]["date_histogram"]["calendar_interval"]
+            == "1d"
+        )
         assert call_body["query"]["bool"]["must"]["query_string"]["query"] == "malware"
 
     @pytest.mark.parametrize("scopes", [["events:read"]])

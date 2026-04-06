@@ -5,6 +5,7 @@ Runs when OPENSEARCH_USERNAME is set to something other than 'admin'.
 Uses OPENSEARCH_INITIAL_ADMIN_PASSWORD to authenticate as admin and create
 the user with OPENSEARCH_PASSWORD and all_access backend role.
 """
+
 import json
 import os
 import ssl
@@ -59,7 +60,11 @@ def wait_for_opensearch(retries=30, delay=2):
                 print("OpenSearch is ready.", flush=True)
                 return
         except Exception as e:
-            print(f"Waiting for OpenSearch failed with: {e!r}", file=sys.stderr, flush=True)
+            print(
+                f"Waiting for OpenSearch failed with: {e!r}",
+                file=sys.stderr,
+                flush=True,
+            )
         time.sleep(delay)
     print("ERROR: OpenSearch did not become ready.", file=sys.stderr)
     sys.exit(1)

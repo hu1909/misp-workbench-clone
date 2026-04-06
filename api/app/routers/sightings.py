@@ -1,10 +1,12 @@
 import logging
-from app.auth.security import get_current_active_user
-from app.schemas import user as user_schemas
-from app.schemas import sighting as sighting_schemas
-from app.repositories import sightings as sightings_repository
-from fastapi import APIRouter, Security, Query, Depends
 from typing import Union
+
+from fastapi import APIRouter, Depends, Query, Security
+
+from app.auth.security import get_current_active_user
+from app.repositories import sightings as sightings_repository
+from app.schemas import sighting as sighting_schemas
+from app.schemas import user as user_schemas
 
 router = APIRouter()
 
@@ -14,7 +16,9 @@ logger = logging.getLogger(__name__)
 async def get_sightings_parameters(
     attribute_uuid: str = None, type: str = None
 ) -> sighting_schemas.SightingQueryParams:
-    return sighting_schemas.SightingQueryParams(attribute_uuid=attribute_uuid, type=type)
+    return sighting_schemas.SightingQueryParams(
+        attribute_uuid=attribute_uuid, type=type
+    )
 
 
 async def get_sighting_activity_params(
@@ -48,7 +52,9 @@ def get_sightings(
     status_code=201,
 )
 def create_sightings(
-    sightings: Union[sighting_schemas.SightingCreate, list[sighting_schemas.SightingCreate]],
+    sightings: Union[
+        sighting_schemas.SightingCreate, list[sighting_schemas.SightingCreate]
+    ],
     user: user_schemas.User = Security(
         get_current_active_user, scopes=["sightings:create"]
     ),
@@ -65,7 +71,9 @@ def create_sightings(
     response_model=sighting_schemas.SightingHistogramResponse,
 )
 def get_sighting_histogram(
-    params: sighting_schemas.SightingActivityParams = Depends(get_sighting_activity_params),
+    params: sighting_schemas.SightingActivityParams = Depends(
+        get_sighting_activity_params
+    ),
     user: user_schemas.User = Security(
         get_current_active_user, scopes=["sightings:read"]
     ),
@@ -78,7 +86,9 @@ def get_sighting_histogram(
     response_model=sighting_schemas.SightingStatsResponse,
 )
 def get_sighting_stats(
-    params: sighting_schemas.SightingActivityParams = Depends(get_sighting_activity_params),
+    params: sighting_schemas.SightingActivityParams = Depends(
+        get_sighting_activity_params
+    ),
     user: user_schemas.User = Security(
         get_current_active_user, scopes=["sightings:read"]
     ),

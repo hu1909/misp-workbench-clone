@@ -1,12 +1,15 @@
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
+
 from app.database import Base
-from sqlalchemy import Column, ForeignKey, Integer, String, DateTime, Text
 
 
 class Hunt(Base):
     __tablename__ = "hunts"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     query = Column(Text, nullable=False)
@@ -23,6 +26,8 @@ class HuntRunHistory(Base):
     __tablename__ = "hunt_run_history"
 
     id = Column(Integer, primary_key=True, index=True)
-    hunt_id = Column(Integer, ForeignKey("hunts.id", ondelete="CASCADE"), nullable=False, index=True)
+    hunt_id = Column(
+        Integer, ForeignKey("hunts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     run_at = Column(DateTime(timezone=True), nullable=False)
     match_count = Column(Integer, nullable=False)

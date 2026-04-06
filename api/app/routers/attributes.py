@@ -1,5 +1,12 @@
 from typing import Optional
 from uuid import UUID
+
+from fastapi import (APIRouter, Depends, HTTPException, Query, Response,
+                     Security, status)
+from fastapi.responses import JSONResponse
+from fastapi_pagination import Page, Params
+from sqlalchemy.orm import Session
+
 from app.auth.security import get_current_active_user
 from app.db.session import get_db
 from app.repositories import attributes as attributes_repository
@@ -7,11 +14,6 @@ from app.repositories import events as events_repository
 from app.repositories import tags as tags_repository
 from app.schemas import attribute as attribute_schemas
 from app.schemas import user as user_schemas
-from app.worker import tasks
-from fastapi import APIRouter, Depends, HTTPException, Response, Security, status, Query
-from fastapi_pagination import Page, Params
-from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
 
 router = APIRouter()
 
@@ -61,7 +63,10 @@ async def search_attributes(
 
     from_value = (page - 1) * size
 
-    return attributes_repository.search_attributes(query, page, from_value, size, sort_by, sort_order)
+    return attributes_repository.search_attributes(
+        query, page, from_value, size, sort_by, sort_order
+    )
+
 
 @router.get("/attributes/histogram")
 async def get_attributes_histogram(
@@ -78,7 +83,9 @@ async def get_attributes_histogram(
 async def export_attributes(
     query: str = Query(..., min_length=0),
     format: Optional[str] = Query("json"),
-    user: user_schemas.User = Security(get_current_active_user, scopes=["attributes:read"]),
+    user: user_schemas.User = Security(
+        get_current_active_user, scopes=["attributes:read"]
+    ),
 ):
     results = attributes_repository.export_attributes(query, format=format)
 
@@ -88,6 +95,7 @@ async def export_attributes(
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid format specified"
     )
+
 
 @router.get("/attributes/{attribute_uuid}", response_model=attribute_schemas.Attribute)
 def get_attribute_by_uuid(
@@ -133,7 +141,9 @@ def create_attribute(
     return attributes_repository.create_attribute(db=db, attribute=attribute)
 
 
-@router.patch("/attributes/{attribute_uuid}", response_model=attribute_schemas.Attribute)
+@router.patch(
+    "/attributes/{attribute_uuid}", response_model=attribute_schemas.Attribute
+)
 def update_attribute(
     attribute_uuid: UUID,
     attribute: attribute_schemas.AttributeUpdate,

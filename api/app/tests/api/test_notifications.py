@@ -1,10 +1,11 @@
 import pytest
-from app.auth import auth
-from app.models import notification as notification_models
-from app.tests.api_tester import ApiTester
 from fastapi import status
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
+
+from app.auth import auth
+from app.models import notification as notification_models
+from app.tests.api_tester import ApiTester
 
 
 class TestNotificationsResource(ApiTester):

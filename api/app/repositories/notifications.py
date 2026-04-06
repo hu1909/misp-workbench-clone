@@ -1,20 +1,22 @@
+import copy
+import json
+from datetime import datetime, timezone
 from typing import Union
-import uuid
-from app.models import user as user_models
+
+from fastapi_pagination.ext.sqlalchemy import paginate
+from sqlalchemy import select, text, update
+from sqlalchemy.orm import Session
+
 from app.models import hunt as hunt_models
 from app.models import notification as notification_models
 from app.models import organisation as organisation_models
+from app.models import user as user_models
 from app.repositories import user_settings as user_settings_repository
-from sqlalchemy import select, update, text
-from sqlalchemy.orm import Session
-from fastapi_pagination.ext.sqlalchemy import paginate
-from datetime import datetime, timezone
 from app.services.redis import get_redis_client
 from app.settings import get_settings
-import json
-import copy
 
 CACHE_TTL = 60
+
 
 def get_user_notifications(db: Session, user_id: int, params: dict = {}):
     query = select(notification_models.Notification)
@@ -154,13 +156,12 @@ def get_followers_for(db, follow_key: str, uuid: str):
         )
 
         user_ids = [row.user_id for row in result]
-        
 
         RedisClient.setex(cache_key, CACHE_TTL, json.dumps(user_ids))
-    
+
     if not user_ids:
         return []
-    
+
     return user_ids
 
 
@@ -284,17 +285,19 @@ def build_attribute_notification(
     )
 
 
-def create_attribute_notifications(
-    db: Session, type: str, attribute
-):
+def create_attribute_notifications(db: Session, type: str, attribute):
     """Create notifications for users following event of the attribute."""
 
     event = None
     event_uuid_val = getattr(attribute, "event_uuid", None)
     if event_uuid_val:
-        from app.repositories import events as events_repository_local
         from uuid import UUID as _UUID
-        event = events_repository_local.get_event_from_opensearch(_UUID(str(event_uuid_val)))
+
+        from app.repositories import events as events_repository_local
+
+        event = events_repository_local.get_event_from_opensearch(
+            _UUID(str(event_uuid_val))
+        )
 
     if not event:
         return []
@@ -354,9 +357,13 @@ def create_object_notifications(db: Session, type: str, object):
     event = None
     event_uuid_val = getattr(object, "event_uuid", None)
     if event_uuid_val:
-        from app.repositories import events as events_repository_local
         from uuid import UUID as _UUID
-        event = events_repository_local.get_event_from_opensearch(_UUID(str(event_uuid_val)))
+
+        from app.repositories import events as events_repository_local
+
+        event = events_repository_local.get_event_from_opensearch(
+            _UUID(str(event_uuid_val))
+        )
 
     if not event:
         return []
@@ -541,14 +548,17 @@ def _enqueue_notification_emails(
     if not notifications:
         return
     # Lazy import to avoid circular dependency with tasks module
+    from app.services.runtime_settings_provider import \
+        get_runtime_settings  # noqa: PLC0415
     from app.worker.tasks import send_email  # noqa: PLC0415
-    from app.services.runtime_settings_provider import get_runtime_settings  # noqa: PLC0415
 
     app_settings = get_settings()
     from_addr = app_settings.Mail.username
 
     runtime = get_runtime_settings(db)
-    email_max_per_hour = runtime.get_value("notifications.email_max_per_hour", default=10)
+    email_max_per_hour = runtime.get_value(
+        "notifications.email_max_per_hour", default=10
+    )
 
     RedisClient = get_redis_client()
 
@@ -569,7 +579,9 @@ def _enqueue_notification_emails(
 
         if user_id not in email_enabled_cache:
             ns = user_settings_repository.get_user_setting(db, user_id, "notifications")
-            email_enabled_cache[user_id] = ns.value.get("email_notifications", True) if ns else True
+            email_enabled_cache[user_id] = (
+                ns.value.get("email_notifications", True) if ns else True
+            )
 
         if not email_enabled_cache[user_id]:
             continue

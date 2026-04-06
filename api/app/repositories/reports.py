@@ -1,10 +1,12 @@
-from app.services.opensearch import get_opensearch_client
-from app.schemas import event as event_schemas
-from opensearchpy.exceptions import NotFoundError
-import logging
-import uuid
-import time
 import datetime
+import logging
+import time
+import uuid
+
+from opensearchpy.exceptions import NotFoundError
+
+from app.schemas import event as event_schemas
+from app.services.opensearch import get_opensearch_client
 
 logger = logging.getLogger(__name__)
 

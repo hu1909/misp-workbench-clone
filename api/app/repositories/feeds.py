@@ -1,23 +1,24 @@
-import os
+import csv
+import json
 import logging
+import os
+from datetime import datetime, timedelta
 
 import requests
-from app.models import feed as feed_models
-from app.models import event as event_models
-from app.repositories import sync as sync_repository
-from app.repositories import events as events_repository
-from app.repositories import organisations as organisations_repository
-from app.schemas import feed as feed_schemas
-from app.schemas import user as user_schemas
-from app.schemas import attribute as attribute_schemas
-from app.schemas import event as event_schemas
-from app.worker import tasks
 from fastapi import HTTPException, status
 from pymisp import MISPEvent
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
-import csv
-import json
+
+from app.models import event as event_models
+from app.models import feed as feed_models
+from app.repositories import events as events_repository
+from app.repositories import organisations as organisations_repository
+from app.repositories import sync as sync_repository
+from app.schemas import attribute as attribute_schemas
+from app.schemas import event as event_schemas
+from app.schemas import feed as feed_schemas
+from app.schemas import user as user_schemas
+from app.worker import tasks
 
 logger = logging.getLogger(__name__)
 
@@ -391,7 +392,9 @@ def fetch_single_feed_event(db: Session, feed_id: int, event_uuid: str, user):
         )
 
     result = tasks.fetch_feed_event.delay(event_uuid, feed_id, user.id)
-    return {"task": {"id": result.id, "name": "fetch_feed_event", "status": result.status}}
+    return {
+        "task": {"id": result.id, "name": "fetch_feed_event", "status": result.status}
+    }
 
 
 def test_misp_feed_connection(feed: feed_schemas.FeedCreate):
@@ -907,7 +910,11 @@ def process_json_item_to_attribute(item, settings: dict):
         elif prop_cfg.get("strategy") == "field":
             raw = get_json_path(item, prop_cfg.get("field") or "")
             if prop == "to_ids":
-                attribute[prop] = str(raw).strip().lower() in ["yes", "1", "true"] if raw is not None else False
+                attribute[prop] = (
+                    str(raw).strip().lower() in ["yes", "1", "true"]
+                    if raw is not None
+                    else False
+                )
             elif prop == "tags":
                 if isinstance(raw, list):
                     attribute[prop] = [str(t) for t in raw]
@@ -935,8 +942,7 @@ def preview_json_feed(settings: dict = None, limit: int = 5):
     preview_items = items[:limit]
     nested_settings = settings.get("settings") or {}
     processed = [
-        process_json_item_to_attribute(item, nested_settings)
-        for item in preview_items
+        process_json_item_to_attribute(item, nested_settings) for item in preview_items
     ]
 
     return {"result": "success", "items": preview_items, "preview": processed}

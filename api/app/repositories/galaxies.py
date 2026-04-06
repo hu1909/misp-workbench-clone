@@ -3,26 +3,32 @@ import logging
 import os
 from datetime import datetime
 
-from app.models import galaxy as galaxies_models
-from app.models import tag as tags_models
-from app.schemas import galaxy as galaxies_schemas
-from app.schemas import user as users_schemas
 from fastapi import HTTPException, Query, status
 from fastapi_pagination.ext.sqlalchemy import paginate
 from sqlalchemy.orm import Session, noload
 from sqlalchemy.sql import select
 
+from app.models import galaxy as galaxies_models
+from app.models import tag as tags_models
+from app.schemas import galaxy as galaxies_schemas
+from app.schemas import user as users_schemas
+
 logger = logging.getLogger(__name__)
 
 
 def get_galaxies(
-    db: Session, enabled: bool = Query(None), filter: str = Query(None), include_clusters: bool = Query(False)
+    db: Session,
+    enabled: bool = Query(None),
+    filter: str = Query(None),
+    include_clusters: bool = Query(False),
 ) -> galaxies_models.Galaxy:
     if include_clusters:
         query = select(galaxies_models.Galaxy)
-    else:   
+    else:
         # avoid loading child relationships (clusters/elements) to keep the query lightweight
-        query = select(galaxies_models.Galaxy).options(noload(galaxies_models.Galaxy.clusters))
+        query = select(galaxies_models.Galaxy).options(
+            noload(galaxies_models.Galaxy.clusters)
+        )
 
     if filter:
         query = query.where(galaxies_models.Galaxy.name.ilike(f"%{filter}%"))
@@ -46,12 +52,14 @@ def get_galaxy_by_id(db: Session, galaxy_id: int) -> galaxies_models.Galaxy:
         .first()
     )
 
+
 def get_galaxy_by_uuid(db: Session, galaxy_uuid: str) -> galaxies_models.Galaxy:
     return (
         db.query(galaxies_models.Galaxy)
         .filter(galaxies_models.Galaxy.uuid == galaxy_uuid)
         .first()
     )
+
 
 def update_galaxies(
     db: Session, user: users_schemas.User

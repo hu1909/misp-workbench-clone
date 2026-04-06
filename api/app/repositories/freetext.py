@@ -2,8 +2,9 @@ import ipaddress
 import re
 from typing import Optional
 
-from app.repositories import feeds as feeds_repository
 from fastapi import HTTPException, status
+
+from app.repositories import feeds as feeds_repository
 
 # Ordered most-specific first to avoid false matches
 _PATTERNS: list[tuple[str, re.Pattern]] = [
