@@ -49,7 +49,6 @@ jobs:
 
   push-image:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/qa' || github.ref == 'refs/heads/demo')
-    needs: build
     runs-on: ubuntu-latest
 
     steps:
