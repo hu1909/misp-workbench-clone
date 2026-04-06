@@ -17,7 +17,8 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest 
     defaults:
-      working-directory: opensearch
+      run:
+        working-directory: opensearch
 
     steps: 
       - name: Checkout code 
