@@ -71,7 +71,7 @@ jobs:
           path: |
             frontend/dist/
             frontend/.env
-          retention-days: 1 
+          retention-days: 1
 
   push-image:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/qa' || github.ref == 'refs/heads/demo')
@@ -86,7 +86,7 @@ jobs:
         uses: actions/download-artifact@v4
         with: 
           name: app-build 
-          path: .
+          path: frontend
 
       - name: Verify artifacts downloaded
         run: |

@@ -2,9 +2,6 @@ FROM opensearchproject/opensearch:2.11.0
 
 USER root
 
-# Install curl for health checks
-RUN yum install -y curl && yum clean all
-
 # Copy setup files
 COPY mappings/ /usr/share/opensearch/setup/mappings/
 COPY pipelines/ /usr/share/opensearch/setup/pipelines/
