@@ -13,7 +13,8 @@ COPY poetry.lock pyproject.toml entrypoint.sh /code/
 
 RUN chmod +x /code/entrypoint.sh
 RUN pip install "poetry==$POETRY_VERSION"
-RUN poetry install
+RUN poetry lock --no-update
+RUN poetry install --only main
 
 COPY . /code
 
