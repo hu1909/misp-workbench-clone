@@ -16,7 +16,7 @@ jobs:
   lint-and-typecheck:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest 
-    continue-on-error: true  # Don't block pipeline on linting errors
+    continue-on-error: true
     defaults:
       run: 
         working-directory: api
@@ -25,23 +25,27 @@ jobs:
       - name: Checkout Code 
         uses: actions/checkout@v5 
       
-      - name: Set up Python 
+      - name: Set up Python with cache
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: 'pip'
 
-      # 3. Install dependencies
-      - name: Install dependencies
+      # Install only linting tools
+      - name: Install linting tools
         run: |
-          python -m pip install --upgrade pip
-          pip install flake8
+          pip install --upgrade pip
+          pip install flake8 black isort
 
-      # 4. Run flake8 linting (optional - won't fail build)
+      # Run linters 
       - name: Run flake8
-        continue-on-error: true
-        run: |
-          # Check for syntax/style issues
-          flake8 . --count --max-complexity=10 --max-line-length=88 --statistics
+        run: flake8 . --count --max-complexity=10 --max-line-length=88 --statistics
+      
+      - name: Check code formatting (black)
+        run: black --check --diff .
+      
+      - name: Check import sorting (isort)
+        run: isort --check-only --diff .
 
   push-image:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/qa' || github.ref == 'refs/heads/demo')
@@ -65,8 +69,10 @@ jobs:
       - name: Build, tag, and push image to ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: my-app
+          ECR_REPOSITORY: misp-workbench-api
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -f api/Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG api
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest

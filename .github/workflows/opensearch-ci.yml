@@ -28,7 +28,8 @@ jobs:
         run: npm install -g jsonlint
 
       - name: Lint JSON files
-        run: jsonlint **/*.json && echo "All JSON files are valid"
+        run: |
+          find . -name "*.json" -type f -exec jsonlint {} \; && echo "All JSON files are valid"
 
 
   push-image:
@@ -53,9 +54,11 @@ jobs:
       - name: Build, tag, and push image to ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: my-app
+          ECR_REPOSITORY: misp-workbench-opensearch
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -f opensearch/Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG opensearch
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 

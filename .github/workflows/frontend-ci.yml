@@ -47,13 +47,30 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       
       - run: npm ci 
+      - name: Create .env file with environment-specific API URL
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            API_URL="${{ secrets.PROD_API_URL || 'https://api.yourdomain.com' }}"
+          elif [[ "${{ github.ref }}" == "refs/heads/qa" ]]; then
+            API_URL="${{ secrets.QA_API_URL || 'https://api-qa.yourdomain.com' }}"
+          elif [[ "${{ github.ref }}" == "refs/heads/demo" ]]; then
+            API_URL="${{ secrets.DEMO_API_URL || 'https://api-demo.yourdomain.com' }}"
+          else
+            # For PRs and other branches
+            API_URL="${{ secrets.VITE_API_URL || 'http://localhost:8080' }}"
+          fi
+          echo "VITE_API_URL=$API_URL" > .env
+          echo "Building with VITE_API_URL=$API_URL"
+
       - run: npm run build 
 
-      - name: Upload build output 
+      - name: Upload build output and .env
         uses: actions/upload-artifact@v4
         with:
           name: app-build 
-          path: frontend/dist/
+          path: |
+            frontend/dist/
+            frontend/.env
           retention-days: 1 
 
   push-image:
@@ -65,11 +82,20 @@ jobs:
       - name: Checkout code 
         uses: actions/checkout@v4
 
-      - name: Download build folder 
+      - name: Download build artifacts (dist + .env)
         uses: actions/download-artifact@v4
         with: 
           name: app-build 
-          path: frontend/dist/
+          path: .
+
+      - name: Verify artifacts downloaded
+        run: |
+          echo "Contents of frontend directory:"
+          ls -la frontend/
+          echo "Contents of frontend/dist:"
+          ls -la frontend/dist/ || echo "dist not found"
+          echo ".env file:"
+          cat frontend/.env || echo ".env not found"
 
       - name: Configure AWS credentials 
         uses: aws-actions/configure-aws-credentials@v4 
@@ -85,11 +111,11 @@ jobs:
       - name: Build, tag, and push image to ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: my-app
+          ECR_REPOSITORY: misp-workbench-frontend
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -f frontend/Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG frontend
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
-
-    
