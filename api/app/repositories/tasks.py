@@ -1,12 +1,14 @@
 import os
 from uuid import uuid4
 
+from celery.schedules import crontab
+from celery.schedules import schedule as celery_schedule
+from fastapi import HTTPException, status
+from redbeat import RedBeatSchedulerEntry
+
+from app.flower import FlowerClient
 from app.rediscli import get_redis
 from app.schemas import task as task_schemas
-from fastapi import HTTPException, status
-from app.flower import FlowerClient
-from redbeat import RedBeatSchedulerEntry
-from celery.schedules import crontab, schedule as celery_schedule
 from app.worker.tasks import celery_app
 
 flower_url = os.environ.get("FLOWER_URL", "http://flower:5555/")
@@ -109,7 +111,7 @@ def schedule_task(
     params: dict = None,
     schedule: task_schemas.ScheduleTaskSchedule = None,
     enabled: bool = False,
-    user_id: str = None
+    user_id: str = None,
 ):
     # TODO: Validate task_name, params and schedule
 
@@ -136,7 +138,7 @@ def schedule_task(
         args=params.get("args", []) if params else [],
         kwargs=params.get("kwargs", {}) if params else {},
         app=celery_app,
-        enabled=enabled
+        enabled=enabled,
     )
     entry.save()
 
@@ -171,7 +173,7 @@ def delete_scheduled_task(task_name: str):
         key = f"redbeat:{task_name}"
         task = RedBeatSchedulerEntry.from_key(key, app=celery_app)
         task.delete()
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Scheduled task with name {task_name} not found.",
@@ -183,7 +185,7 @@ def update_scheduled_task(
     params: dict = None,
     schedule: task_schemas.ScheduleTaskSchedule = None,
     enabled: bool = None,
-    user_id: str = None
+    user_id: str = None,
 ):
     try:
         key = f"redbeat:{task_name}"
@@ -194,11 +196,11 @@ def update_scheduled_task(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Scheduled task with name {task_name} not found.",
             )
-        
+
         if params is not None:
             task.args = params.get("args", [])
             task.kwargs = params.get("kwargs", {})
-            
+
         if not "user_id" in task.kwargs:
             task.kwargs["user_id"] = user_id
 
@@ -220,7 +222,7 @@ def update_scheduled_task(
         task.save()
 
         return scheduled_task_to_dict(task)
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Scheduled task with name {task_name} not found.",

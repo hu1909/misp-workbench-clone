@@ -1,7 +1,8 @@
 from typing import Optional
 
-from app.models.event import DistributionLevel
 from pydantic import BaseModel, ConfigDict
+
+from app.models.event import DistributionLevel
 
 
 class FeedBase(BaseModel):

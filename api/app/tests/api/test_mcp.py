@@ -1,13 +1,14 @@
 import json
 
 import pytest
+from fastapi import status
+from fastapi.testclient import TestClient
+from jwt import decode as jwt_decode
+
 from app.auth import auth
 from app.models import user as user_models
 from app.settings import get_settings
 from app.tests.api_tester import ApiTester
-from fastapi import status
-from fastapi.testclient import TestClient
-from jwt import decode as jwt_decode
 
 MCP_URL = "/mcp"
 MCP_TRANSPORT_URL = "/"
@@ -26,7 +27,7 @@ def _parse_sse(text: str) -> list[dict]:
     results = []
     for line in text.splitlines():
         if line.startswith("data: "):
-            payload = line[len("data: "):].strip()
+            payload = line[len("data: ") :].strip()
             if payload:
                 results.append(json.loads(payload))
     return results
@@ -74,7 +75,13 @@ def _mcp_init(client: TestClient, auth_token=None) -> str:
     return session_id
 
 
-def _mcp_request(client: TestClient, method: str, params: dict = None, auth_token=None, req_id: int = 1) -> dict:
+def _mcp_request(
+    client: TestClient,
+    method: str,
+    params: dict = None,
+    auth_token=None,
+    req_id: int = 1,
+) -> dict:
     """Initialize an MCP session, POST a JSON-RPC 2.0 message, and return the first result."""
     session_id = _mcp_init(client, auth_token)
     body = {"jsonrpc": "2.0", "id": req_id, "method": method}
@@ -130,7 +137,9 @@ class TestMcpConfigEndpoint(ApiTester):
         )
         assert response.status_code == status.HTTP_200_OK
 
-        bearer = response.json()["mcpServers"]["misp-workbench"]["headers"]["Authorization"]
+        bearer = response.json()["mcpServers"]["misp-workbench"]["headers"][
+            "Authorization"
+        ]
         token = bearer.removeprefix("Bearer ")
 
         settings = get_settings()
@@ -143,9 +152,7 @@ class TestMcpConfigEndpoint(ApiTester):
         assert all(s.startswith("mcp:") for s in payload["scopes"])
 
     @pytest.mark.parametrize("scopes", [[]])
-    def test_mcp_config_unauthorized(
-        self, client: TestClient, auth_token: auth.Token
-    ):
+    def test_mcp_config_unauthorized(self, client: TestClient, auth_token: auth.Token):
         response = client.get(
             "/mcp/config", headers={"Authorization": "Bearer " + auth_token}
         )
@@ -158,9 +165,12 @@ class TestMcpConfigEndpoint(ApiTester):
 
 # ── MCP tools via Streamable HTTP ─────────────────────────────────────────────
 
+
 class TestMcpToolsList(ApiTester):
     @pytest.mark.parametrize("scopes", [["mcp:list_tools"]])
-    def test_tools_list_returns_expected_tools(self, mcp_client: TestClient, auth_token: auth.Token):
+    def test_tools_list_returns_expected_tools(
+        self, mcp_client: TestClient, auth_token: auth.Token
+    ):
         msg = _mcp_request(mcp_client, "tools/list", auth_token=auth_token)
         assert "result" in msg, msg
         tools = {t["name"] for t in msg["result"]["tools"]}
@@ -190,9 +200,12 @@ class TestMcpToolsList(ApiTester):
         }
         assert expected.issubset(tools)
 
+
 class TestMcpToolsCall(ApiTester):
     @pytest.mark.parametrize("scopes", [["mcp:detect_indicator_type"]])
-    def test_detect_indicator_type_ip(self, mcp_client: TestClient, auth_token: auth.Token):
+    def test_detect_indicator_type_ip(
+        self, mcp_client: TestClient, auth_token: auth.Token
+    ):
         msg = _mcp_request(
             mcp_client,
             "tools/call",
@@ -207,13 +220,21 @@ class TestMcpToolsCall(ApiTester):
         assert result[0]["type"] == "ip-src"
 
     @pytest.mark.parametrize("scopes", [["mcp:detect_indicator_type"]])
-    def test_detect_indicator_type_multiple(self, mcp_client: TestClient, auth_token: auth.Token):
+    def test_detect_indicator_type_multiple(
+        self, mcp_client: TestClient, auth_token: auth.Token
+    ):
         msg = _mcp_request(
             mcp_client,
             "tools/call",
             {
                 "name": "detect_indicator_type",
-                "arguments": {"values": ["evil.com", "CVE-2021-44228", "d41d8cd98f00b204e9800998ecf8427e"]},
+                "arguments": {
+                    "values": [
+                        "evil.com",
+                        "CVE-2021-44228",
+                        "d41d8cd98f00b204e9800998ecf8427e",
+                    ]
+                },
             },
             auth_token=auth_token,
         )
@@ -226,11 +247,16 @@ class TestMcpToolsCall(ApiTester):
         assert types["d41d8cd98f00b204e9800998ecf8427e"] == "md5"
 
     @pytest.mark.parametrize("scopes", [["mcp:search_events"]])
-    def test_search_events_returns_pagination_shape(self, mcp_client: TestClient, auth_token: auth.Token):
+    def test_search_events_returns_pagination_shape(
+        self, mcp_client: TestClient, auth_token: auth.Token
+    ):
         msg = _mcp_request(
             mcp_client,
             "tools/call",
-            {"name": "search_events", "arguments": {"query": "*", "page": 1, "size": 5}},
+            {
+                "name": "search_events",
+                "arguments": {"query": "*", "page": 1, "size": 5},
+            },
             auth_token=auth_token,
         )
         assert "result" in msg, msg
@@ -243,7 +269,9 @@ class TestMcpToolsCall(ApiTester):
         assert result["size"] == 5
 
     @pytest.mark.parametrize("scopes", [["mcp:search_events"]])
-    def test_search_events_size_capped_at_100(self, mcp_client: TestClient, auth_token: auth.Token):
+    def test_search_events_size_capped_at_100(
+        self, mcp_client: TestClient, auth_token: auth.Token
+    ):
         msg = _mcp_request(
             mcp_client,
             "tools/call",
@@ -255,7 +283,9 @@ class TestMcpToolsCall(ApiTester):
         assert result["size"] == 100
 
     @pytest.mark.parametrize("scopes", [["mcp:search_attributes"]])
-    def test_search_attributes_returns_pagination_shape(self, mcp_client: TestClient, auth_token: auth.Token):
+    def test_search_attributes_returns_pagination_shape(
+        self, mcp_client: TestClient, auth_token: auth.Token
+    ):
         msg = _mcp_request(
             mcp_client,
             "tools/call",
@@ -272,7 +302,10 @@ class TestMcpToolsCall(ApiTester):
         msg = _mcp_request(
             mcp_client,
             "tools/call",
-            {"name": "get_event", "arguments": {"event_uuid": "00000000-0000-0000-0000-000000000000"}},
+            {
+                "name": "get_event",
+                "arguments": {"event_uuid": "00000000-0000-0000-0000-000000000000"},
+            },
             auth_token=auth_token,
         )
         assert "result" in msg, msg
@@ -280,7 +313,9 @@ class TestMcpToolsCall(ApiTester):
         assert "error" in result
 
     @pytest.mark.parametrize("scopes", [["mcp:get_correlations"]])
-    def test_get_correlations_requires_param(self, mcp_client: TestClient, auth_token: auth.Token):
+    def test_get_correlations_requires_param(
+        self, mcp_client: TestClient, auth_token: auth.Token
+    ):
         msg = _mcp_request(
             mcp_client,
             "tools/call",
@@ -292,7 +327,9 @@ class TestMcpToolsCall(ApiTester):
         assert "error" in result
 
     @pytest.mark.parametrize("scopes", [["mcp:get_statistics"]])
-    def test_get_statistics_returns_dict(self, mcp_client: TestClient, auth_token: auth.Token):
+    def test_get_statistics_returns_dict(
+        self, mcp_client: TestClient, auth_token: auth.Token
+    ):
         msg = _mcp_request(
             mcp_client,
             "tools/call",
@@ -340,7 +377,9 @@ class TestMcpToolsCall(ApiTester):
         assert all("tlp" in t["name"].lower() for t in result)
 
     @pytest.mark.parametrize("scopes", [["mcp:search_event_reports"]])
-    def test_search_event_reports_returns_shape(self, mcp_client: TestClient, auth_token: auth.Token):
+    def test_search_event_reports_returns_shape(
+        self, mcp_client: TestClient, auth_token: auth.Token
+    ):
         msg = _mcp_request(
             mcp_client,
             "tools/call",
@@ -353,11 +392,16 @@ class TestMcpToolsCall(ApiTester):
         assert "results" in result
 
     @pytest.mark.parametrize("scopes", [["mcp:get_event_reports"]])
-    def test_get_event_reports_unknown_event(self, mcp_client: TestClient, auth_token: auth.Token):
+    def test_get_event_reports_unknown_event(
+        self, mcp_client: TestClient, auth_token: auth.Token
+    ):
         msg = _mcp_request(
             mcp_client,
             "tools/call",
-            {"name": "get_event_reports", "arguments": {"event_uuid": "00000000-0000-0000-0000-000000000000"}},
+            {
+                "name": "get_event_reports",
+                "arguments": {"event_uuid": "00000000-0000-0000-0000-000000000000"},
+            },
             auth_token=auth_token,
         )
         assert "result" in msg, msg
@@ -403,7 +447,9 @@ class TestMcpToolsCall(ApiTester):
         assert module_1_settings.module_name in names
 
     @pytest.mark.parametrize("scopes", [["mcp:get_notifications"]])
-    def test_get_notifications_returns_shape(self, mcp_client: TestClient, auth_token: auth.Token):
+    def test_get_notifications_returns_shape(
+        self, mcp_client: TestClient, auth_token: auth.Token
+    ):
         msg = _mcp_request(
             mcp_client,
             "tools/call",
@@ -421,7 +467,9 @@ class TestMcpToolsCall(ApiTester):
 
 class TestMcpResources(ApiTester):
     @pytest.mark.parametrize("scopes", [["mcp:list_resources"]])
-    def test_resources_list_contains_expected(self, mcp_client: TestClient, auth_token: auth.Token):
+    def test_resources_list_contains_expected(
+        self, mcp_client: TestClient, auth_token: auth.Token
+    ):
         msg = _mcp_request(mcp_client, "resources/list", auth_token=auth_token)
         assert "result" in msg, msg
         uris = {r["uri"] for r in msg["result"]["resources"]}
@@ -435,7 +483,9 @@ class TestMcpResources(ApiTester):
         assert "misp://galaxies" in uris
 
     @pytest.mark.parametrize("scopes", [["mcp:list_resources"]])
-    def test_read_attribute_types_resource(self, mcp_client: TestClient, auth_token: auth.Token):
+    def test_read_attribute_types_resource(
+        self, mcp_client: TestClient, auth_token: auth.Token
+    ):
         msg = _mcp_request(
             mcp_client,
             "resources/read",
@@ -450,7 +500,9 @@ class TestMcpResources(ApiTester):
         assert data["total"] > 0
 
     @pytest.mark.parametrize("scopes", [["mcp:list_resources"]])
-    def test_read_threat_levels_resource(self, mcp_client: TestClient, auth_token: auth.Token):
+    def test_read_threat_levels_resource(
+        self, mcp_client: TestClient, auth_token: auth.Token
+    ):
         msg = _mcp_request(
             mcp_client,
             "resources/read",
@@ -466,7 +518,9 @@ class TestMcpResources(ApiTester):
 
 class TestMcpPrompts(ApiTester):
     @pytest.mark.parametrize("scopes", [["mcp:list_prompts"]])
-    def test_prompts_list_contains_expected(self, mcp_client: TestClient, auth_token: auth.Token):
+    def test_prompts_list_contains_expected(
+        self, mcp_client: TestClient, auth_token: auth.Token
+    ):
         msg = _mcp_request(mcp_client, "prompts/list", auth_token=auth_token)
         assert "result" in msg, msg
         names = {p["name"] for p in msg["result"]["prompts"]}
@@ -478,7 +532,9 @@ class TestMcpPrompts(ApiTester):
         assert "enrich_indicator_prompt" in names
 
     @pytest.mark.parametrize("scopes", [["mcp:list_prompts"]])
-    def test_get_ioc_lookup_prompt(self, mcp_client: TestClient, auth_token: auth.Token):
+    def test_get_ioc_lookup_prompt(
+        self, mcp_client: TestClient, auth_token: auth.Token
+    ):
         msg = _mcp_request(
             mcp_client,
             "prompts/get",

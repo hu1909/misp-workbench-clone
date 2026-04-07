@@ -7,9 +7,10 @@ Create Date: 2024-08-13 07:43:21.837336
 """
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy import Float
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "541fabd34b80"

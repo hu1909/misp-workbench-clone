@@ -1,8 +1,11 @@
 import uuid
-from app.database import Base
+
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
-from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+
+from app.database import Base
+
 
 class Taxonomy(Base):
     __tablename__ = "taxonomies"

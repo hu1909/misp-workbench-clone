@@ -1,6 +1,7 @@
-from app.database import Base
 from sqlalchemy import Boolean, Column, DateTime, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
+
+from app.database import Base
 
 
 class Role(Base):

@@ -1,31 +1,24 @@
 import json
-
 from typing import Annotated, Optional
 from uuid import UUID
-from app.auth.security import get_current_active_user
-from app.db.session import get_db
-from app.repositories import events as events_repository
-from app.repositories import tags as tags_repository
-from app.repositories import attachments as attachments_repository
-from app.repositories import objects as objects_repository
-from app.schemas import event as event_schemas
-from app.schemas import user as user_schemas
-from app.schemas import object as object_schemas
-from app.schemas import vulnerability as vulnerability_schemas
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    Response,
-    Security,
-    UploadFile,
-    Form,
-    Query,
-)
+
+from fastapi import (APIRouter, Depends, Form, HTTPException, Query, Response,
+                     Security, UploadFile)
+from fastapi.responses import JSONResponse
 from fastapi_pagination import Page, Params
 from sqlalchemy.orm import Session
 from starlette import status
-from fastapi.responses import JSONResponse
+
+from app.auth.security import get_current_active_user
+from app.db.session import get_db
+from app.repositories import attachments as attachments_repository
+from app.repositories import events as events_repository
+from app.repositories import objects as objects_repository
+from app.repositories import tags as tags_repository
+from app.schemas import event as event_schemas
+from app.schemas import object as object_schemas
+from app.schemas import user as user_schemas
+from app.schemas import vulnerability as vulnerability_schemas
 
 router = APIRouter()
 
@@ -70,7 +63,9 @@ async def search_events(
 
     from_value = (page - 1) * size
 
-    return events_repository.search_events(query, page, from_value, size, sort_by, sort_order)
+    return events_repository.search_events(
+        query, page, from_value, size, sort_by, sort_order
+    )
 
 
 @router.get("/events/histogram")
@@ -304,7 +299,6 @@ def get_event_attachments(
     )
 
     return objects
-
 
 
 @router.post("/events/{event_uuid}/publish")

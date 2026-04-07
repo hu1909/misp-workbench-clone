@@ -2,13 +2,14 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
+from pydantic import BaseModel, ConfigDict
+
 from app.models.event import AnalysisLevel, DistributionLevel, ThreatLevel
 from app.schemas.attribute import Attribute
 from app.schemas.object import Object
+from app.schemas.organisations import Organisation
 from app.schemas.sharing_groups import SharingGroup
 from app.schemas.tag import Tag
-from app.schemas.organisations import Organisation
-from pydantic import BaseModel, ConfigDict
 
 
 class EventBase(BaseModel):

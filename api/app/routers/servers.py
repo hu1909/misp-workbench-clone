@@ -1,14 +1,15 @@
+from fastapi import APIRouter, Depends, HTTPException, Security, status
+from sqlalchemy.orm import Session
+
 from app.auth.security import get_current_active_user
 from app.db.session import get_db
 from app.repositories import servers as servers_repository
+from app.schemas import event as event_schemas
 from app.schemas import server as server_schemas
 from app.schemas import task as task_schemas
 from app.schemas import user as user_schemas
-from app.schemas import event as event_schemas
-from app.worker import tasks
 from app.settings import Settings
-from fastapi import APIRouter, Depends, HTTPException, Security, status
-from sqlalchemy.orm import Session
+from app.worker import tasks
 
 router = APIRouter()
 
@@ -267,6 +268,7 @@ def push_server(
         status=task.status,
         message="push server_id=%s enqueued" % server_id,
     )
+
 
 @router.post("/servers/{server_id}/events/{event_uuid}/push")
 def push_remote_event_by_uuid(

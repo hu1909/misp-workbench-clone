@@ -1,8 +1,9 @@
-from app.auth.utils import role_has_scope
-from app.database import Base
 from pymisp import MISPEvent
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
 from sqlalchemy.orm import backref, relationship
+
+from app.auth.utils import role_has_scope
+from app.database import Base
 
 
 class User(Base):
@@ -44,4 +45,3 @@ class User(Base):
         return role_has_scope(self.role.scopes, "events:publish")
 
 
-from app.models.user_setting import UserSetting

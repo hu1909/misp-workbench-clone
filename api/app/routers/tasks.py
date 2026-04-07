@@ -1,10 +1,11 @@
 import uuid
+
+from fastapi import APIRouter, HTTPException, Query, Security
+
 from app.auth.security import get_current_active_user
-from app.schemas import user as user_schemas
-from app.schemas import task as task_schemas
 from app.repositories import tasks as tasks_repository
-from fastapi import APIRouter, Query, Security
-from fastapi import HTTPException
+from app.schemas import task as task_schemas
+from app.schemas import user as user_schemas
 
 router = APIRouter()
 
@@ -76,7 +77,11 @@ def schedule_task(
 ):
 
     return tasks_repository.schedule_task(
-        task_name=task.task_name, params=task.params, schedule=task.schedule, enabled=task.enabled, user_id=user.id
+        task_name=task.task_name,
+        params=task.params,
+        schedule=task.schedule,
+        enabled=task.enabled,
+        user_id=user.id,
     )
 
 
@@ -123,4 +128,10 @@ def update_scheduled_task(
             status_code=400, detail="Invalid task_name, must be a valid UUID4 string"
         )
 
-    return tasks_repository.update_scheduled_task(task_name=task_name, params=task.params, schedule=task.schedule, enabled=task.enabled, user_id=user.id)
+    return tasks_repository.update_scheduled_task(
+        task_name=task_name,
+        params=task.params,
+        schedule=task.schedule,
+        enabled=task.enabled,
+        user_id=user.id,
+    )

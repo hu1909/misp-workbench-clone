@@ -1,12 +1,14 @@
 from typing import Optional, Union
+
+from fastapi import APIRouter, Depends, HTTPException, Security, status
+from fastapi_pagination import Page
+from sqlalchemy.orm import Session
+
 from app.auth.security import get_current_active_user
 from app.db.session import get_db
 from app.repositories import notifications as notifications_repository
-from app.schemas import user as user_schemas
 from app.schemas import notifications as notification_schemas
-from fastapi import APIRouter, Depends, Security, HTTPException, status
-from sqlalchemy.orm import Session
-from fastapi_pagination import Page
+from app.schemas import user as user_schemas
 
 router = APIRouter()
 
@@ -69,7 +71,9 @@ async def unfollow_notification(
         get_current_active_user, scopes=["notifications:update"]
     ),
 ) -> notification_schemas.StatusResponse:
-    result = notifications_repository.unfollow_notification(db, notification_id, user.id)
+    result = notifications_repository.unfollow_notification(
+        db, notification_id, user.id
+    )
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found"

@@ -1,16 +1,23 @@
-import logging
 import datetime
+import logging
 from typing import Union
-from app.schemas import sighting as sighting_schemas
-from app.services.opensearch import get_opensearch_client
+
 from fastapi import HTTPException, status
 from opensearchpy import helpers as opensearch_helpers
+
+from app.schemas import sighting as sighting_schemas
+from app.services.opensearch import get_opensearch_client
 from app.worker import tasks
 
 logger = logging.getLogger(__name__)
 
 
-def get_sightings(params: sighting_schemas.SightingQueryParams, page: int = 0, from_value: int = 0, size: int = 100):
+def get_sightings(
+    params: sighting_schemas.SightingQueryParams,
+    page: int = 0,
+    from_value: int = 0,
+    size: int = 100,
+):
     OpenSearchClient = get_opensearch_client()
 
     query = {
@@ -28,9 +35,7 @@ def get_sightings(params: sighting_schemas.SightingQueryParams, page: int = 0, f
             {"term": {"attribute_uuid.keyword": params.attribute_uuid}}
         )
     if params.type:
-        query["query"]["bool"]["must"].append(
-            {"term": {"type.keyword": params.type}}
-        )
+        query["query"]["bool"]["must"].append({"term": {"type.keyword": params.type}})
 
     response = OpenSearchClient.search(
         index="misp-sightings",

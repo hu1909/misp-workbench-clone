@@ -1,11 +1,12 @@
 import logging
 
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+
 from app.auth import auth
 from app.models import user as user_models
 from app.schemas import user as user_schemas
 from app.worker import tasks
-from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

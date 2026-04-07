@@ -1,5 +1,6 @@
-from typing import Any, Optional, Literal
 from datetime import datetime
+from typing import Any, Literal, Optional
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -12,7 +13,9 @@ class HuntBase(BaseModel):
     description: Optional[str] = None
     query: str
     hunt_type: Literal["opensearch", "rulezet", "cpe"] = "opensearch"
-    index_target: Optional[Literal["attributes", "events", "correlations"]] = "attributes"
+    index_target: Optional[Literal["attributes", "events", "correlations"]] = (
+        "attributes"
+    )
     status: Literal["active", "paused"] = "active"
 
 

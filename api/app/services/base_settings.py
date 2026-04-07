@@ -1,5 +1,7 @@
-from sqlalchemy.orm import Session
 import copy
+
+from sqlalchemy.orm import Session
+
 
 class BaseSettings:
     def __init__(self, db: Session, default_settings: dict = None):

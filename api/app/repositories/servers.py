@@ -1,26 +1,22 @@
-import os
 import logging
+import os
 from types import SimpleNamespace
 from typing import Union
+
+from fastapi import HTTPException, status
+from pymisp import (MISPAttribute, MISPEvent, MISPObject, MISPSharingGroup,
+                    PyMISP)
+from sqlalchemy.orm import Session
 
 from app.models import server as server_models
 from app.models import user as user_models
 from app.models.event import DistributionLevel
-from app.schemas import event as event_schemas
-from app.repositories import sync as sync_repository
 from app.repositories import events as events_repository
 from app.repositories import sharing_groups as sharing_groups_repository
+from app.repositories import sync as sync_repository
+from app.schemas import event as event_schemas
 from app.schemas import server as server_schemas
 from app.settings import Settings
-from fastapi import HTTPException, status
-from pymisp import (
-    MISPAttribute,
-    MISPEvent,
-    MISPObject,
-    MISPSharingGroup,
-    PyMISP,
-)
-from sqlalchemy.orm import Session
 from app.worker import tasks
 
 logger = logging.getLogger(__name__)
@@ -556,7 +552,9 @@ def preview_pull_server(
         required_orgs = [required_orgs]
 
     try:
-        filtered_events = remote_misp.search_index(published=True, timestamp=timestamp, minimal=True)
+        filtered_events = remote_misp.search_index(
+            published=True, timestamp=timestamp, minimal=True
+        )
         all_events = remote_misp.search_index(published=True, minimal=True)
     except Exception as ex:
         raise HTTPException(
@@ -568,6 +566,7 @@ def preview_pull_server(
     filtered = list(filtered_events)
 
     if required_tags:
+
         def event_has_tag(event, tag_name):
             for tag_entry in event.get("EventTag", []):
                 tag = tag_entry.get("Tag", tag_entry)
@@ -576,12 +575,13 @@ def preview_pull_server(
                     return True
             return False
 
-        filtered = [e for e in filtered if any(event_has_tag(e, t) for t in required_tags)]
+        filtered = [
+            e for e in filtered if any(event_has_tag(e, t) for t in required_tags)
+        ]
 
     if required_orgs:
         filtered = [
-            e for e in filtered
-            if e.get("Orgc", {}).get("name", "") in required_orgs
+            e for e in filtered if e.get("Orgc", {}).get("name", "") in required_orgs
         ]
 
     total_filtered = len(filtered)
@@ -831,7 +831,7 @@ def push_event_by_uuid(
                 "response": response.json(),
             }
 
-    except Exception as ex:
+    except Exception:
         logger.exception(
             "Failed downloading the event {} from remote server {}".format(
                 event_uuid, server.id
@@ -853,6 +853,7 @@ def push_server_by_id_full(
 
     # get a list of the event UUIDs eligible to be pushed to the server
     from app.services.opensearch import get_opensearch_client as _get_os_client
+
     _os = _get_os_client()
     _resp = _os.search(
         index="misp-events",
@@ -861,10 +862,14 @@ def push_server_by_id_full(
                 "bool": {
                     "must": [
                         {"term": {"published": True}},
-                        {"terms": {"distribution": [
-                            DistributionLevel.CONNECTED_COMMUNITIES.value,
-                            DistributionLevel.ALL_COMMUNITIES.value,
-                        ]}},
+                        {
+                            "terms": {
+                                "distribution": [
+                                    DistributionLevel.CONNECTED_COMMUNITIES.value,
+                                    DistributionLevel.ALL_COMMUNITIES.value,
+                                ]
+                            }
+                        },
                     ]
                 }
             },

@@ -33,5 +33,3 @@ class AnalysisLevel(enum.Enum):
     INITIAL = 0
     ONGOING = 1
     COMPLETE = 2
-
-

@@ -1,9 +1,10 @@
 import pytest
+from fastapi import status
+from fastapi.testclient import TestClient
+
 from app.auth import auth
 from app.models import galaxy as galaxies_models
 from app.tests.api_tester import ApiTester
-from fastapi import status
-from fastapi.testclient import TestClient
 
 
 class TestTaxonomiesResource(ApiTester):
@@ -16,8 +17,9 @@ class TestTaxonomiesResource(ApiTester):
         auth_token: auth.Token,
     ):
         response = client.get(
-            "/galaxies", headers={"Authorization": "Bearer " + auth_token},
-            params={"include_clusters": True}
+            "/galaxies",
+            headers={"Authorization": "Bearer " + auth_token},
+            params={"include_clusters": True},
         )
         data = response.json()
 

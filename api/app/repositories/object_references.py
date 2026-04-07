@@ -2,11 +2,12 @@ import time
 from typing import Optional
 from uuid import UUID
 
-from app.schemas import object_reference as object_reference_schemas
-from app.services.opensearch import get_opensearch_client
 from opensearchpy.exceptions import NotFoundError
 from pymisp import MISPObjectReference
 from sqlalchemy.orm import Session
+
+from app.schemas import object_reference as object_reference_schemas
+from app.services.opensearch import get_opensearch_client
 
 
 def create_object_reference(
@@ -17,10 +18,20 @@ def create_object_reference(
 
     ref_doc = {
         "uuid": ref_uuid,
-        "object_uuid": str(object_reference.object_uuid) if object_reference.object_uuid else None,
-        "event_uuid": str(object_reference.event_uuid) if object_reference.event_uuid else None,
-        "source_uuid": str(object_reference.source_uuid) if object_reference.source_uuid else None,
-        "referenced_uuid": str(object_reference.referenced_uuid) if object_reference.referenced_uuid else None,
+        "object_uuid": (
+            str(object_reference.object_uuid) if object_reference.object_uuid else None
+        ),
+        "event_uuid": (
+            str(object_reference.event_uuid) if object_reference.event_uuid else None
+        ),
+        "source_uuid": (
+            str(object_reference.source_uuid) if object_reference.source_uuid else None
+        ),
+        "referenced_uuid": (
+            str(object_reference.referenced_uuid)
+            if object_reference.referenced_uuid
+            else None
+        ),
         "timestamp": object_reference.timestamp or int(time.time()),
         "referenced_id": object_reference.referenced_id,
         "referenced_type": object_reference.referenced_type,
@@ -29,7 +40,9 @@ def create_object_reference(
         "deleted": object_reference.deleted or False,
     }
 
-    client.index(index="misp-object-references", id=ref_uuid, body=ref_doc, refresh=True)
+    client.index(
+        index="misp-object-references", id=ref_uuid, body=ref_doc, refresh=True
+    )
 
     return object_reference_schemas.ObjectReference.model_validate(ref_doc)
 
@@ -51,7 +64,9 @@ def create_object_reference_from_pulled_object_reference(
         "deleted": False,
     }
 
-    client.index(index="misp-object-references", id=ref_uuid, body=ref_doc, refresh=True)
+    client.index(
+        index="misp-object-references", id=ref_uuid, body=ref_doc, refresh=True
+    )
 
     return object_reference_schemas.ObjectReference.model_validate(ref_doc)
 

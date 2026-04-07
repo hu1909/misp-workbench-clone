@@ -9,8 +9,9 @@ Create Date: 2026-04-01 00:00:00.000000
 import json
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "1a2b3c4d5e6f"
@@ -95,7 +96,7 @@ _USER_SCOPES = [
     "organisations:read",
     "users:me",
     "user_settings:read",
-    "user_settings:update"
+    "user_settings:update",
 ]
 
 _DEFAULT_ROLE_SCOPES = {
@@ -161,7 +162,7 @@ _DEFAULT_ROLE_SCOPES = {
         "organisations:read",
         "users:me",
         "user_settings:read",
-        "user_settings:update"
+        "user_settings:update",
     ],
 }
 
@@ -205,9 +206,7 @@ def downgrade():
     )
     op.add_column(
         "roles",
-        sa.Column(
-            "perm_publish", sa.Boolean(), nullable=False, server_default="false"
-        ),
+        sa.Column("perm_publish", sa.Boolean(), nullable=False, server_default="false"),
     )
     op.add_column(
         "roles",
@@ -331,9 +330,7 @@ def downgrade():
     )
     op.add_column(
         "roles",
-        sa.Column(
-            "rate_limit_count", sa.Integer(), nullable=False, server_default="0"
-        ),
+        sa.Column("rate_limit_count", sa.Integer(), nullable=False, server_default="0"),
     )
     op.add_column(
         "roles",

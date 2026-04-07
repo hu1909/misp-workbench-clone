@@ -1,13 +1,13 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from app.auth import auth
-from app.models import tag as tag_models
-from app.tests.api_tester import ApiTester
 from fastapi import status
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.auth import auth
+from app.models import tag as tag_models
+from app.tests.api_tester import ApiTester
 
 OPENSEARCH_PATCH = "app.repositories.attributes.get_opensearch_client"
 
@@ -15,8 +15,16 @@ MOCK_HISTOGRAM_RESPONSE = {
     "aggregations": {
         "attributes_over_time": {
             "buckets": [
-                {"key_as_string": "2024-01-01T00:00:00.000Z", "key": 1704067200000, "doc_count": 10},
-                {"key_as_string": "2024-01-02T00:00:00.000Z", "key": 1704153600000, "doc_count": 4},
+                {
+                    "key_as_string": "2024-01-01T00:00:00.000Z",
+                    "key": 1704067200000,
+                    "doc_count": 10,
+                },
+                {
+                    "key_as_string": "2024-01-02T00:00:00.000Z",
+                    "key": 1704153600000,
+                    "doc_count": 4,
+                },
             ]
         }
     }
@@ -168,6 +176,7 @@ class TestAttributesResource(ApiTester):
         assert response.status_code == status.HTTP_201_CREATED
 
         from app.services.opensearch import get_opensearch_client
+
         os_client = get_opensearch_client()
         os_attr = os_client.get(index="misp-attributes", id=str(attribute_1.uuid))
         tag_names = [t.get("name") for t in os_attr["_source"].get("tags", [])]
@@ -191,6 +200,7 @@ class TestAttributesResource(ApiTester):
         assert response.status_code == status.HTTP_204_NO_CONTENT
 
         from app.services.opensearch import get_opensearch_client
+
         os_client = get_opensearch_client()
         os_attr = os_client.get(index="misp-attributes", id=str(attribute_1.uuid))
         tag_names = [t.get("name") for t in os_attr["_source"].get("tags", [])]
@@ -229,7 +239,12 @@ class TestAttributesResource(ApiTester):
 
         assert response.status_code == status.HTTP_200_OK
         call_body = mock_os.search.call_args.kwargs["body"]
-        assert call_body["aggs"]["attributes_over_time"]["date_histogram"]["calendar_interval"] == "1w"
+        assert (
+            call_body["aggs"]["attributes_over_time"]["date_histogram"][
+                "calendar_interval"
+            ]
+            == "1w"
+        )
         assert call_body["query"]["bool"]["must"]["query_string"]["query"] == "ip-src"
 
     @pytest.mark.parametrize("scopes", [["attributes:read"]])

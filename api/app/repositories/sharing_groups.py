@@ -4,6 +4,10 @@ from datetime import datetime
 from functools import lru_cache
 from typing import Union
 
+from fastapi import HTTPException, status
+from pymisp import MISPSharingGroup
+from sqlalchemy.orm import Session
+
 from app.auth.utils import role_has_scope
 from app.models import sharing_groups as sharing_groups_models
 from app.models import user as user_models
@@ -11,9 +15,6 @@ from app.repositories import organisations as organisations_repository
 from app.schemas import server as server_schemas
 from app.schemas import sharing_groups as sharing_groups_schemas
 from app.settings import get_settings
-from fastapi import HTTPException, status
-from pymisp import MISPSharingGroup
-from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +221,10 @@ def is_authorised_to_extend(
     if db_sharing_group is None:
         return False
 
-    if role_has_scope(user.role.scopes, "servers:pull") and db_sharing_group.sync_user_id == user.id:
+    if (
+        role_has_scope(user.role.scopes, "servers:pull")
+        and db_sharing_group.sync_user_id == user.id
+    ):
         return True
 
     return (
@@ -260,7 +264,10 @@ def is_authorised_to_save(
                 db_sharing_group.sharing_group_organisations.uuid
                 == user.organisation.uuid
             ):
-                if role_has_scope(user.role.scopes, "servers:pull") or sharing_group_org.extend:
+                if (
+                    role_has_scope(user.role.scopes, "servers:pull")
+                    or sharing_group_org.extend
+                ):
                     organisation_check = True
                     break
 
@@ -270,7 +277,10 @@ def is_authorised_to_save(
                 or sharing_group_server.server.url == settings.MISP.external_baseurl
             ):
                 server_check = True
-                if role_has_scope(user.role.scopes, "servers:pull") and sharing_group_server.all_orgs:
+                if (
+                    role_has_scope(user.role.scopes, "servers:pull")
+                    and sharing_group_server.all_orgs
+                ):
                     organisation_check = True
 
         if db_sharing_group.sharing_group_servers is None:
@@ -294,12 +304,9 @@ def capture_sharing_group_new(
 ) -> Union[int, bool]:
     # see: app/Model/SharingGroup.php::captureSGNew
 
-    if (
-        not is_authorised_to_save(
-            db=db, user=user, sharing_group_uuid=sharing_group.uuid
-        )
-        and not role_has_scope(user.role.scopes, "*")
-    ):
+    if not is_authorised_to_save(
+        db=db, user=user, sharing_group_uuid=sharing_group.uuid
+    ) and not role_has_scope(user.role.scopes, "*"):
         return False
 
     if sharing_group.name == "":
@@ -337,10 +344,7 @@ def capture_sharing_group_existing(
     # see: app/Model/SharingGroup.php::captureSGExisting
 
     has_sync = role_has_scope(user.role.scopes, "servers:pull")
-    if (
-        not is_authorised(db, user, existing_sharing_group.uuid)
-        and not has_sync
-    ):
+    if not is_authorised(db, user, existing_sharing_group.uuid) and not has_sync:
         return False
 
     # we have an up-to-date sharing group, so we can just return the id
@@ -352,7 +356,11 @@ def capture_sharing_group_existing(
         not has_sync and existing_sharing_group.org_id == user.org_id
     )
 
-    if is_updatable_by_sync or is_sharing_group_owner or role_has_scope(user.role.scopes, "*"):
+    if (
+        is_updatable_by_sync
+        or is_sharing_group_owner
+        or role_has_scope(user.role.scopes, "*")
+    ):
         update_sharing_group(
             db,
             existing_sharing_group.id,

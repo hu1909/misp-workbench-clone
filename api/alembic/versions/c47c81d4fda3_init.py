@@ -7,8 +7,9 @@ Create Date: 2022-05-05 10:38:45.448013
 """
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "c47c81d4fda3"

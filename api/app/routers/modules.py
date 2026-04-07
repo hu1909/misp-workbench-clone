@@ -1,12 +1,13 @@
 from typing import Optional
 
+from fastapi import APIRouter, Depends, Security
+from sqlalchemy.orm import Session
+
 from app.auth.security import get_current_active_user
 from app.db.session import get_db
 from app.repositories import modules as modules_repository
 from app.schemas import module as module_schemas
 from app.schemas import user as user_schemas
-from fastapi import APIRouter, Depends, Security
-from sqlalchemy.orm import Session
 
 router = APIRouter()
 

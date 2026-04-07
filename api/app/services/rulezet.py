@@ -12,9 +12,7 @@ def lookup(vuln_id: str) -> dict:
     if detection_data is None:
         return {"error": "Vulnerability not found"}
 
-    if (
-        "results" in detection_data
-    ):
+    if "results" in detection_data:
         return detection_data["results"]
 
     return []

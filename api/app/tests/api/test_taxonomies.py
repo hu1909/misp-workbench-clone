@@ -1,9 +1,10 @@
 import pytest
+from fastapi import status
+from fastapi.testclient import TestClient
+
 from app.auth import auth
 from app.models import taxonomy as taxonomies_models
 from app.tests.api_tester import ApiTester
-from fastapi import status
-from fastapi.testclient import TestClient
 
 
 class TestTaxonomiesResource(ApiTester):

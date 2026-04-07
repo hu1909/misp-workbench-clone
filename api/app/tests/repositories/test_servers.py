@@ -1,22 +1,22 @@
 from unittest.mock import MagicMock, patch
-
-import pytest
 from uuid import UUID
 
-from app.repositories import attributes as attributes_repository
-from app.repositories import object_references as object_references_repository
-from app.repositories import objects as objects_repository
+import pytest
+from sqlalchemy.orm import Session
+
 from app.models import organisation as organisations_models
 from app.models import server as server_models
 from app.models import sharing_groups as sharing_groups_models
 from app.models import tag as tag_models
 from app.models import user as user_models
+from app.repositories import attributes as attributes_repository
 from app.repositories import events as events_repository
+from app.repositories import object_references as object_references_repository
+from app.repositories import objects as objects_repository
 from app.repositories import servers as servers_repository
 from app.settings import Settings
 from app.tests.api_tester import ApiTester
 from app.tests.scenarios import server_pull_scenarios
-from sqlalchemy.orm import Session
 
 
 class TestServersRepository(ApiTester):
@@ -64,7 +64,7 @@ class TestServersRepository(ApiTester):
                 scenario["expected_result"]["event_uuids"][0],
                 server_1,
                 user_1,
-                Settings()
+                Settings(),
             )
 
             # check that the events were created
@@ -95,7 +95,9 @@ class TestServersRepository(ApiTester):
 
             # check the object references were created
             object_references = [
-                object_references_repository.get_object_reference_by_uuid(db, UUID(uuid))
+                object_references_repository.get_object_reference_by_uuid(
+                    db, UUID(uuid)
+                )
                 for uuid in scenario["expected_result"]["object_reference_uuids"]
             ]
             object_references = [r for r in object_references if r is not None]
@@ -139,7 +141,7 @@ class TestServersRepository(ApiTester):
             # check the event tags were created
             event_tag_names = set()
             for event in os_events:
-                for t in (event.tags or []):
+                for t in event.tags or []:
                     event_tag_names.add(t.name)
             for tag_name in scenario["expected_result"]["event_tags"]:
                 assert tag_name in event_tag_names
@@ -147,7 +149,7 @@ class TestServersRepository(ApiTester):
             # check the attribute tags were created
             all_attribute_tag_names = set()
             for attr in attributes:
-                for t in (attr.tags or []):
+                for t in attr.tags or []:
                     all_attribute_tag_names.add(t.name)
             for attribute_tag in scenario["expected_result"]["attribute_tags"]:
                 for tag_name in attribute_tag["tags"]:

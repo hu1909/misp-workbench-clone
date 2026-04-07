@@ -3,14 +3,15 @@ import logging
 import os
 import urllib.request
 
+from fastapi import APIRouter, Security
+from sqlalchemy import text
+
 from app.auth.security import get_current_active_user
 from app.database import engine
 from app.opensearch import OpenSearchClient
 from app.rediscli import RedisClient
 from app.schemas import user as user_schemas
 from app.settings import get_settings
-from fastapi import APIRouter, Security
-from sqlalchemy import text
 
 router = APIRouter()
 
@@ -33,19 +34,23 @@ def _extract_node_stats(raw_nodes):
         os_ = n.get("os", {})
         jvm = n.get("jvm", {})
         fs = n.get("fs", {}).get("total", {})
-        nodes.append({
-            "id": node_id,
-            "name": n.get("name"),
-            "cpu_percent": os_.get("cpu", {}).get("percent"),
-            "mem_used_percent": os_.get("mem", {}).get("used_percent"),
-            "mem_total": _format_bytes(os_.get("mem", {}).get("total_in_bytes")),
-            "mem_used": _format_bytes(os_.get("mem", {}).get("used_in_bytes")),
-            "heap_used_percent": jvm.get("mem", {}).get("heap_used_percent"),
-            "heap_used": _format_bytes(jvm.get("mem", {}).get("heap_used_in_bytes")),
-            "heap_max": _format_bytes(jvm.get("mem", {}).get("heap_max_in_bytes")),
-            "disk_total": _format_bytes(fs.get("total_in_bytes")),
-            "disk_available": _format_bytes(fs.get("available_in_bytes")),
-        })
+        nodes.append(
+            {
+                "id": node_id,
+                "name": n.get("name"),
+                "cpu_percent": os_.get("cpu", {}).get("percent"),
+                "mem_used_percent": os_.get("mem", {}).get("used_percent"),
+                "mem_total": _format_bytes(os_.get("mem", {}).get("total_in_bytes")),
+                "mem_used": _format_bytes(os_.get("mem", {}).get("used_in_bytes")),
+                "heap_used_percent": jvm.get("mem", {}).get("heap_used_percent"),
+                "heap_used": _format_bytes(
+                    jvm.get("mem", {}).get("heap_used_in_bytes")
+                ),
+                "heap_max": _format_bytes(jvm.get("mem", {}).get("heap_max_in_bytes")),
+                "disk_total": _format_bytes(fs.get("total_in_bytes")),
+                "disk_available": _format_bytes(fs.get("available_in_bytes")),
+            }
+        )
     return nodes
 
 
@@ -128,18 +133,23 @@ def get_postgres_diagnostics(
                 text("SELECT pg_size_pretty(pg_database_size(current_database()))")
             ).scalar()
             max_connections = conn.execute(
-                text("SELECT setting::int FROM pg_settings WHERE name = 'max_connections'")
+                text(
+                    "SELECT setting::int FROM pg_settings WHERE name = 'max_connections'"
+                )
             ).scalar()
             conn_rows = conn.execute(
-                text("""
+                text(
+                    """
                     SELECT state, count(*) as count
                     FROM pg_stat_activity
                     WHERE datname = current_database()
                     GROUP BY state
-                """)
+                """
+                )
             ).fetchall()
             table_rows = conn.execute(
-                text("""
+                text(
+                    """
                     SELECT
                         relname,
                         n_live_tup,
@@ -148,7 +158,8 @@ def get_postgres_diagnostics(
                         pg_total_relation_size(relid) AS size_bytes
                     FROM pg_stat_user_tables
                     ORDER BY size_bytes DESC
-                """)
+                """
+                )
             ).fetchall()
 
         connections = {row.state or "unknown": row.count for row in conn_rows}
@@ -227,7 +238,12 @@ def get_storage_diagnostics(
         s3 = settings.Storage.s3
         admin_url = os.environ.get("GARAGE_ADMIN_URL", "http://garage:3903")
         admin_token = os.environ.get("GARAGE_ADMIN_TOKEN", "")
-        base = {"engine": "s3", "endpoint": s3.endpoint, "bucket": s3.bucket, "secure": s3.secure}
+        base = {
+            "engine": "s3",
+            "endpoint": s3.endpoint,
+            "bucket": s3.bucket,
+            "secure": s3.secure,
+        }
 
         try:
             from app.s3cli import S3Client

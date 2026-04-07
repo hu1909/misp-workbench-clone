@@ -1,12 +1,14 @@
 import logging
-from app.auth.security import get_current_active_user
-from app.schemas import user as user_schemas
-from app.schemas import task as task_schemas
-from app.schemas import correlation as correlation_schemas
-from app.repositories import correlations as correlations_repository
-from app.worker import tasks
-from fastapi import APIRouter, Security, Query, Depends, status
 from typing import Optional
+
+from fastapi import APIRouter, Depends, Query, Security, status
+
+from app.auth.security import get_current_active_user
+from app.repositories import correlations as correlations_repository
+from app.schemas import correlation as correlation_schemas
+from app.schemas import task as task_schemas
+from app.schemas import user as user_schemas
+from app.worker import tasks
 
 router = APIRouter()
 
@@ -29,9 +31,13 @@ async def get_correlations_parameters(
     )
 
 
-@router.get("/correlations/", response_model=correlation_schemas.CorrelationListResponse)
+@router.get(
+    "/correlations/", response_model=correlation_schemas.CorrelationListResponse
+)
 def get_correlations(
-    params: correlation_schemas.CorrelationQueryParams = Depends(get_correlations_parameters),
+    params: correlation_schemas.CorrelationQueryParams = Depends(
+        get_correlations_parameters
+    ),
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
     user: user_schemas.User = Security(

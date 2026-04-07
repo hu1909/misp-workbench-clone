@@ -1,11 +1,11 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from app.auth import auth
-from app.tests.api_tester import ApiTester
 from fastapi import status
 from fastapi.testclient import TestClient
 
+from app.auth import auth
+from app.tests.api_tester import ApiTester
 
 OPENSEARCH_PATCH = "app.repositories.correlations.get_opensearch_client"
 
@@ -127,9 +127,9 @@ class TestCorrelationsResource(ApiTester):
 
         assert response.status_code == status.HTTP_200_OK
         call_body = mock_os.search.call_args.kwargs["body"]
-        assert {
-            "term": {"source_attribute_uuid.keyword": "attr-001"}
-        } in call_body["query"]["bool"]["must"]
+        assert {"term": {"source_attribute_uuid.keyword": "attr-001"}} in call_body[
+            "query"
+        ]["bool"]["must"]
 
     @pytest.mark.parametrize("scopes", [["correlations:read"]])
     def test_get_correlations_filter_by_source_event_uuid(
@@ -145,9 +145,9 @@ class TestCorrelationsResource(ApiTester):
 
         assert response.status_code == status.HTTP_200_OK
         call_body = mock_os.search.call_args.kwargs["body"]
-        assert {
-            "term": {"source_event_uuid.keyword": "event-aaa"}
-        } in call_body["query"]["bool"]["must"]
+        assert {"term": {"source_event_uuid.keyword": "event-aaa"}} in call_body[
+            "query"
+        ]["bool"]["must"]
 
     @pytest.mark.parametrize("scopes", [["correlations:read"]])
     def test_get_correlations_filter_by_match_type(
@@ -163,7 +163,9 @@ class TestCorrelationsResource(ApiTester):
 
         assert response.status_code == status.HTTP_200_OK
         call_body = mock_os.search.call_args.kwargs["body"]
-        assert {"term": {"match_type.keyword": "term"}} in call_body["query"]["bool"]["must"]
+        assert {"term": {"match_type.keyword": "term"}} in call_body["query"]["bool"][
+            "must"
+        ]
 
     @pytest.mark.parametrize("scopes", [["correlations:read"]])
     def test_get_correlations_no_filters_uses_match_all(
@@ -247,9 +249,7 @@ class TestCorrelationsResource(ApiTester):
     # ── GET /correlations/stats ───────────────────────────────────────────────
 
     @pytest.mark.parametrize("scopes", [["correlations:read"]])
-    def test_get_correlations_stats(
-        self, client: TestClient, auth_token: auth.Token
-    ):
+    def test_get_correlations_stats(self, client: TestClient, auth_token: auth.Token):
         mock_os = make_opensearch_mock()
         mock_os.search.side_effect = [
             MOCK_STATS_TOP_EVENTS_RESPONSE,
@@ -282,9 +282,7 @@ class TestCorrelationsResource(ApiTester):
     # ── DELETE /correlations/ ─────────────────────────────────────────────────
 
     @pytest.mark.parametrize("scopes", [["correlations:delete"]])
-    def test_delete_correlations(
-        self, client: TestClient, auth_token: auth.Token
-    ):
+    def test_delete_correlations(self, client: TestClient, auth_token: auth.Token):
         mock_os = make_opensearch_mock()
         mock_os.indices.get_mapping.return_value = {
             "misp-attribute-correlations": {"mappings": {}}

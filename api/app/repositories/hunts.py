@@ -1,19 +1,18 @@
-import logging
-
 import json
+import logging
+from datetime import datetime, timezone
 
-from app.models import hunt as hunt_models
-from app.schemas import hunt as hunt_schemas
-from app.services.opensearch import get_opensearch_client
-from app.services import rulezet
-from app.services import vulnerability_lookup
-from app.repositories import notifications as notifications_repository
-from app.services.redis import get_redis_client
 from fastapi import HTTPException, status
+from fastapi_pagination.ext.sqlalchemy import paginate
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from fastapi_pagination.ext.sqlalchemy import paginate
-from datetime import datetime, timezone
+
+from app.models import hunt as hunt_models
+from app.repositories import notifications as notifications_repository
+from app.schemas import hunt as hunt_schemas
+from app.services import rulezet, vulnerability_lookup
+from app.services.opensearch import get_opensearch_client
+from app.services.redis import get_redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -55,9 +54,7 @@ def create_hunt(db: Session, hunt: hunt_schemas.HuntCreate, user_id: int):
     return db_hunt
 
 
-def update_hunt(
-    db: Session, hunt_id: int, hunt: hunt_schemas.HuntUpdate, user_id: int
-):
+def update_hunt(db: Session, hunt_id: int, hunt: hunt_schemas.HuntUpdate, user_id: int):
     db_hunt = get_hunt_by_id(db, hunt_id, user_id)
     if not db_hunt:
         return None
@@ -121,6 +118,7 @@ def delete_hunt(db: Session, hunt_id: int, user_id: int):
     redis.delete(f"hunt:results:{hunt_id}")
     redis.delete(f"hunt:history:{hunt_id}")
     from app.repositories import tasks as tasks_repository
+
     tasks_repository.delete_scheduled_tasks_for_hunt(hunt_id)
     return {"status": "success"}
 
@@ -136,7 +134,9 @@ def _persist_hunt_run(
     db_hunt.last_run_at = now
     db_hunt.last_match_count = total
     db_hunt.updated_at = now
-    db.add(hunt_models.HuntRunHistory(hunt_id=db_hunt.id, run_at=now, match_count=total))
+    db.add(
+        hunt_models.HuntRunHistory(hunt_id=db_hunt.id, run_at=now, match_count=total)
+    )
     db.commit()
     db.refresh(db_hunt)
 

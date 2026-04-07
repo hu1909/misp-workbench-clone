@@ -1,20 +1,22 @@
-from app.auth import auth
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer,SecurityScopes
-from sqlalchemy.orm import Session
+from fastapi.security import OAuth2PasswordBearer, SecurityScopes
 from jwt import decode as jwt_decode
 from jwt.exceptions import InvalidTokenError
 from pydantic import BaseModel, ValidationError
+from sqlalchemy.orm import Session
 
+from app.auth import auth
 from app.db.session import get_db
-from app.settings import get_settings
 from app.repositories import users as users_repository
+from app.settings import get_settings
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
+
 
 class TokenData(BaseModel):
     username: str = ""
     scopes: list[str] = []
+
 
 async def get_current_active_user(
     security_scopes: SecurityScopes,

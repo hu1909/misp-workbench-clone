@@ -1,27 +1,26 @@
 import logging
 import math
-import time
+from collections import defaultdict
 from typing import Optional
 from uuid import UUID, uuid4
+
+from fastapi import HTTPException, status
+from fastapi_pagination import Page, Params
+from opensearchpy.exceptions import NotFoundError
+from pymisp import MISPObject
+from sqlalchemy.orm import Session
 
 from app.models import feed as feed_models
 from app.models import user as user_models
 from app.repositories import attributes as attributes_repository
 from app.repositories import object_references as object_references_repository
-from app.repositories import events as events_repository
+from app.schemas import attribute as attribute_schemas
 from app.schemas import event as event_schemas
 from app.schemas import object as object_schemas
-from app.schemas import attribute as attribute_schemas
 from app.schemas import object_reference as object_reference_schemas
 from app.schemas import user as user_schemas
-from app.worker import tasks
 from app.services.opensearch import get_opensearch_client
-from fastapi import HTTPException, status
-from fastapi_pagination import Page, Params
-from pymisp import MISPObject
-from sqlalchemy.orm import Session
-from collections import defaultdict
-from opensearchpy.exceptions import NotFoundError
+from app.worker import tasks
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +58,6 @@ def enrich_object_attributes_with_correlations(
         attr.correlations = correlation_map.get(str(attr.uuid), [])
 
     return attributes
-
 
 
 def get_objects_from_opensearch(
@@ -128,7 +126,9 @@ def get_objects_from_opensearch(
         items.append(object_schemas.Object.model_validate(source))
 
     pages = math.ceil(total / params.size) if params.size > 0 else 0
-    return Page(items=items, total=total, page=params.page, size=params.size, pages=pages)
+    return Page(
+        items=items, total=total, page=params.page, size=params.size, pages=pages
+    )
 
 
 def get_object_from_opensearch(
@@ -210,7 +210,10 @@ def get_objects(
     try:
         attr_response = client.search(
             index="misp-attributes",
-            body={"query": {"terms": {"object_uuid.keyword": object_uuids}}, "size": 10000},
+            body={
+                "query": {"terms": {"object_uuid.keyword": object_uuids}},
+                "size": 10000,
+            },
         )
         raw_by_uuid: dict = {}
         for attr_hit in attr_response["hits"]["hits"]:
@@ -247,7 +250,9 @@ def create_object(
     event_uuid = str(object.event_uuid) if object.event_uuid else None
 
     dist = object.distribution
-    dist_val = dist.value if hasattr(dist, "value") else (dist if dist is not None else 5)
+    dist_val = (
+        dist.value if hasattr(dist, "value") else (dist if dist is not None else 5)
+    )
 
     obj_doc = {
         "uuid": object_uuid,
@@ -271,7 +276,7 @@ def create_object(
     client.index(index="misp-objects", id=object_uuid, body=obj_doc, refresh=True)
 
     built_attrs = []
-    for attr in (object.attributes or []):
+    for attr in object.attributes or []:
         attr.event_uuid = event_uuid
         attr_schema = attributes_repository.create_attribute(db, attr)
         client.update(
@@ -282,7 +287,7 @@ def create_object(
         )
         built_attrs.append(attr_schema)
 
-    for object_reference in (object.object_references or []):
+    for object_reference in object.object_references or []:
         object_reference.event_uuid = event_uuid
         object_references_repository.create_object_reference(db, object_reference)
 
@@ -311,7 +316,9 @@ def create_object_from_pulled_object(
         "name": pulled_object.name,
         "meta_category": pulled_object["meta-category"],
         "description": pulled_object.description,
-        "template_uuid": str(pulled_object.template_uuid) if pulled_object.template_uuid else None,
+        "template_uuid": (
+            str(pulled_object.template_uuid) if pulled_object.template_uuid else None
+        ),
         "template_version": pulled_object.template_version,
         "timestamp": ts,
         "distribution": dist_val,
@@ -364,7 +371,9 @@ def update_object_from_pulled_object(
     user: user_models.User,
 ):
     ts_raw = pulled_object.timestamp
-    pulled_ts = ts_raw.timestamp() if hasattr(ts_raw, "timestamp") else float(ts_raw or 0)
+    pulled_ts = (
+        ts_raw.timestamp() if hasattr(ts_raw, "timestamp") else float(ts_raw or 0)
+    )
 
     if local_object.timestamp < pulled_ts:
         client = get_opensearch_client()
@@ -372,7 +381,9 @@ def update_object_from_pulled_object(
         pulled_attr_uuids = {str(a.uuid) for a in pulled_object.attributes}
 
         for pulled_attr in pulled_object.attributes:
-            local_attribute = attributes_repository.get_attribute_by_uuid(db, pulled_attr.uuid)
+            local_attribute = attributes_repository.get_attribute_by_uuid(
+                db, pulled_attr.uuid
+            )
             if local_attribute is None:
                 new_attr = attributes_repository.create_attribute_from_pulled_attribute(
                     db, pulled_attr, event_uuid, user
@@ -437,20 +448,29 @@ def update_object(
     client = get_opensearch_client()
     os_obj = get_object_from_opensearch(object_uuid)
     if os_obj is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Object not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Object not found"
+        )
 
     patch = object.model_dump(
         exclude_unset=True,
-        exclude={"attributes", "new_attributes", "update_attributes", "delete_attributes"},
+        exclude={
+            "attributes",
+            "new_attributes",
+            "update_attributes",
+            "delete_attributes",
+        },
     )
     for k, v in list(patch.items()):
         if hasattr(v, "value"):
             patch[k] = v.value
 
     if patch:
-        client.update(index="misp-objects", id=str(os_obj.uuid), body={"doc": patch}, refresh=True)
+        client.update(
+            index="misp-objects", id=str(os_obj.uuid), body={"doc": patch}, refresh=True
+        )
 
-    for attr in (object.new_attributes or []):
+    for attr in object.new_attributes or []:
         attr.event_uuid = os_obj.event_uuid
         attr_schema = attributes_repository.create_attribute(db, attr)
         client.update(
@@ -460,13 +480,15 @@ def update_object(
             refresh=True,
         )
 
-    for attr in (object.update_attributes or []):
+    for attr in object.update_attributes or []:
         attributes_repository.update_attribute(db, attr.uuid, attr)
 
-    for attr_id in (object.delete_attributes or []):
+    for attr_id in object.delete_attributes or []:
         attributes_repository.delete_attribute(db, attr_id)
 
-    tasks.handle_updated_object.delay(str(os_obj.uuid), str(os_obj.event_uuid) if os_obj.event_uuid else None)
+    tasks.handle_updated_object.delay(
+        str(os_obj.uuid), str(os_obj.event_uuid) if os_obj.event_uuid else None
+    )
 
     return get_object_from_opensearch(os_obj.uuid)
 
@@ -475,9 +497,16 @@ def delete_object(db: Session, object_uuid: UUID) -> None:
     client = get_opensearch_client()
     os_obj = get_object_from_opensearch(object_uuid)
     if os_obj is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Object not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Object not found"
+        )
 
-    client.update(index="misp-objects", id=str(os_obj.uuid), body={"doc": {"deleted": True}}, refresh=True)
+    client.update(
+        index="misp-objects",
+        id=str(os_obj.uuid),
+        body={"doc": {"deleted": True}},
+        refresh=True,
+    )
 
     for attr in os_obj.attributes:
         client.update(
@@ -487,7 +516,9 @@ def delete_object(db: Session, object_uuid: UUID) -> None:
             refresh=True,
         )
 
-    tasks.handle_deleted_object.delay(str(os_obj.uuid), str(os_obj.event_uuid) if os_obj.event_uuid else None)
+    tasks.handle_deleted_object.delay(
+        str(os_obj.uuid), str(os_obj.event_uuid) if os_obj.event_uuid else None
+    )
 
 
 def create_objects_from_fetched_event(
@@ -522,7 +553,9 @@ def update_objects_from_fetched_event(
         for h in resp["hits"]["hits"]
     }
 
-    new_objects = [obj for obj in event.objects if str(obj.uuid) not in local_event_dict]
+    new_objects = [
+        obj for obj in event.objects if str(obj.uuid) not in local_event_dict
+    ]
     updated_objects = [
         obj
         for obj in event.objects

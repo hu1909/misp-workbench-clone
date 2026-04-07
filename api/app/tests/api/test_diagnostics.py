@@ -1,10 +1,11 @@
 from unittest.mock import patch
 
 import pytest
-from app.auth import auth
-from app.tests.api_tester import ApiTester
 from fastapi import status
 from fastapi.testclient import TestClient
+
+from app.auth import auth
+from app.tests.api_tester import ApiTester
 
 SAMPLE_MODULES_RESPONSE = [
     {

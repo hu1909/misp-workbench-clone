@@ -1,14 +1,15 @@
 import json
-import os
 import logging
+import os
 
-from app.models import tag as tags_models
-from app.models import taxonomy as taxonomies_models
-from app.schemas import taxonomy as taxonomies_schemas
 from fastapi import HTTPException, Query, status
 from fastapi_pagination.ext.sqlalchemy import paginate
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import select
+
+from app.models import tag as tags_models
+from app.models import taxonomy as taxonomies_models
+from app.schemas import taxonomy as taxonomies_schemas
 
 logger = logging.getLogger(__name__)
 

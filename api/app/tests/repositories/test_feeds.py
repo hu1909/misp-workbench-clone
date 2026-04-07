@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
-
 from uuid import UUID
+
+from sqlalchemy.orm import Session
 
 from app.models import feed as feed_models
 from app.models import tag as tag_models
@@ -12,7 +13,6 @@ from app.repositories import object_references as object_references_repository
 from app.repositories import objects as objects_repository
 from app.tests.api_tester import ApiTester
 from app.tests.scenarios import feed_fetch_scenarios
-from sqlalchemy.orm import Session
 
 
 class TestFeedsRepository(ApiTester):
@@ -67,8 +67,10 @@ class TestFeedsRepository(ApiTester):
             assert obj is not None
 
             # check the object references were created
-            object_reference = object_references_repository.get_object_reference_by_uuid(
-                db, UUID("d7e57f39-4dd5-4b87-b040-75561fa8289e")
+            object_reference = (
+                object_references_repository.get_object_reference_by_uuid(
+                    db, UUID("d7e57f39-4dd5-4b87-b040-75561fa8289e")
+                )
             )
             assert object_reference is not None
 
@@ -91,7 +93,7 @@ class TestFeedsRepository(ApiTester):
             ]:
                 attr = attributes_repository.get_attribute_from_opensearch(UUID(uuid))
                 if attr:
-                    for t in (attr.tags or []):
+                    for t in attr.tags or []:
                         all_attribute_tag_names.add(t.name)
             assert "tlp:red" in all_attribute_tag_names
 
@@ -160,8 +162,10 @@ class TestFeedsRepository(ApiTester):
             assert object_attribute.timestamp == 1577836801
 
             # check the object references were created
-            object_reference = object_references_repository.get_object_reference_by_uuid(
-                db, UUID("4d4c12b9-e514-496e-a8a6-06d5c6815b97")
+            object_reference = (
+                object_references_repository.get_object_reference_by_uuid(
+                    db, UUID("4d4c12b9-e514-496e-a8a6-06d5c6815b97")
+                )
             )
             assert (
                 str(object_reference.referenced_uuid)
@@ -183,7 +187,7 @@ class TestFeedsRepository(ApiTester):
             ]:
                 attr = attributes_repository.get_attribute_from_opensearch(UUID(uuid))
                 if attr:
-                    for t in (attr.tags or []):
+                    for t in attr.tags or []:
                         all_attribute_tag_names.add(t.name)
             assert "ATTRIBUTE_EVENT_FEED_ADDED_TAG" in all_attribute_tag_names
             assert "OBJECT_ATTRIBUTE_EVENT_FEED_ADDED_TAG" in all_attribute_tag_names

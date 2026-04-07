@@ -1,22 +1,17 @@
 import logging
+from datetime import datetime
 from hashlib import sha1
 from uuid import UUID
 
-from datetime import datetime
+from pymisp import MISPAttribute, MISPEventReport, MISPObject, MISPTag
+from sqlalchemy.orm import Session
+
 from app.models import tag as tag_models
-from app.schemas import event as event_schemas
 from app.models import user as user_models
 from app.repositories import attributes as attributes_repository
 from app.repositories import objects as objects_repository
 from app.repositories import tags as tags_repository
-from app.schemas import server as server_schemas
-from pymisp import (
-    MISPAttribute,
-    MISPObject,
-    MISPTag,
-    MISPEventReport,
-)
-from sqlalchemy.orm import Session
+from app.schemas import event as event_schemas
 from app.services.opensearch import get_opensearch_client
 
 logger = logging.getLogger(__name__)

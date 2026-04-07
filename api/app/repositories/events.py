@@ -2,27 +2,29 @@ import logging
 import math
 import time
 from datetime import datetime
+from typing import Iterable, Optional
 from uuid import UUID, uuid4
-from typing import Optional, Iterable
-from app.worker import tasks
-from app.services.opensearch import get_opensearch_client
-from app.services.vulnerability_lookup import lookup as vulnerability_lookup
-from app.services.rulezet import lookup as rulezet_lookup
-from app.models import feed as feed_models
-from app.models import tag as tag_models
-from app.models import organisation as org_models
-from app.repositories import tags as tags_repository
-from app.repositories import attributes as attributes_repository
-from app.schemas import event as event_schemas
-from app.schemas import user as user_schemas
-from app.schemas import organisations as org_schemas
-import app.schemas.attribute as attribute_schemas
-import app.schemas.vulnerability as vulnerability_schemas
-from fastapi import HTTPException, status, Query
+
+from fastapi import HTTPException, status
 from fastapi_pagination import Page, Params
 from opensearchpy.exceptions import NotFoundError
 from pymisp import MISPEvent, MISPOrganisation
 from sqlalchemy.orm import Session
+
+import app.schemas.attribute as attribute_schemas
+import app.schemas.vulnerability as vulnerability_schemas
+from app.models import feed as feed_models
+from app.models import organisation as org_models
+from app.models import tag as tag_models
+from app.repositories import attributes as attributes_repository
+from app.repositories import tags as tags_repository
+from app.schemas import event as event_schemas
+from app.schemas import organisations as org_schemas
+from app.schemas import user as user_schemas
+from app.services.opensearch import get_opensearch_client
+from app.services.rulezet import lookup as rulezet_lookup
+from app.services.vulnerability_lookup import lookup as vulnerability_lookup
+from app.worker import tasks
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +64,9 @@ def get_events_from_opensearch(
         items.append(event_schemas.Event.model_validate(source))
 
     pages = math.ceil(total / params.size) if params.size > 0 else 0
-    return Page(items=items, total=total, page=params.page, size=params.size, pages=pages)
+    return Page(
+        items=items, total=total, page=params.page, size=params.size, pages=pages
+    )
 
 
 def get_event_from_opensearch(event_uuid: UUID) -> Optional[event_schemas.Event]:
@@ -122,7 +126,9 @@ def search_events_histogram(query: str = None, interval: str = "1d"):
         "size": 0,
         "query": {
             "bool": {
-                "must": {"query_string": {"query": query or "*", "default_field": "info"}},
+                "must": {
+                    "query_string": {"query": query or "*", "default_field": "info"}
+                },
                 "filter": {"term": {"deleted": False}},
             }
         },
@@ -257,26 +263,46 @@ def create_event(db: Session, event: event_schemas.EventCreate) -> event_schemas
     ts = event.timestamp or now
 
     org = db.query(org_models.Organisation).filter_by(id=event.org_id).first()
-    org_dict = org_schemas.Organisation.model_validate(org).model_dump(mode="json") if org else None
+    org_dict = (
+        org_schemas.Organisation.model_validate(org).model_dump(mode="json")
+        if org
+        else None
+    )
 
     event_doc = {
         "uuid": event_uuid,
         "org_id": event.org_id,
-        "date": (event.date or datetime.now()).strftime("%Y-%m-%d") if event.date else datetime.now().strftime("%Y-%m-%d"),
+        "date": (
+            (event.date or datetime.now()).strftime("%Y-%m-%d")
+            if event.date
+            else datetime.now().strftime("%Y-%m-%d")
+        ),
         "info": event.info,
         "user_id": event.user_id,
         "published": event.published or False,
-        "analysis": event.analysis.value if hasattr(event.analysis, "value") else (event.analysis or 0),
+        "analysis": (
+            event.analysis.value
+            if hasattr(event.analysis, "value")
+            else (event.analysis or 0)
+        ),
         "attribute_count": 0,
         "object_count": 0,
         "orgc_id": event.orgc_id or event.org_id,
         "timestamp": ts,
-        "distribution": event.distribution.value if hasattr(event.distribution, "value") else (event.distribution or 0),
+        "distribution": (
+            event.distribution.value
+            if hasattr(event.distribution, "value")
+            else (event.distribution or 0)
+        ),
         "sharing_group_id": event.sharing_group_id,
         "sharing_group": None,
         "proposal_email_lock": event.proposal_email_lock or False,
         "locked": event.locked or False,
-        "threat_level": event.threat_level.value if hasattr(event.threat_level, "value") else (event.threat_level or 4),
+        "threat_level": (
+            event.threat_level.value
+            if hasattr(event.threat_level, "value")
+            else (event.threat_level or 4)
+        ),
         "publish_timestamp": event.publish_timestamp or 0,
         "sighting_timestamp": event.sighting_timestamp,
         "disable_correlation": event.disable_correlation or False,
@@ -305,22 +331,42 @@ def create_event_from_pulled_event(pulled_event: MISPEvent) -> event_schemas.Eve
         "uuid": event_uuid,
         "org_id": pulled_event.org_id,
         "orgc_id": pulled_event.orgc_id or pulled_event.org_id,
-        "date": pulled_event.date.isoformat() if hasattr(pulled_event.date, "isoformat") else str(pulled_event.date),
+        "date": (
+            pulled_event.date.isoformat()
+            if hasattr(pulled_event.date, "isoformat")
+            else str(pulled_event.date)
+        ),
         "info": pulled_event.info,
         "user_id": pulled_event.user_id,
         "published": pulled_event.published or False,
-        "analysis": int(pulled_event.analysis) if pulled_event.analysis is not None else 0,
+        "analysis": (
+            int(pulled_event.analysis) if pulled_event.analysis is not None else 0
+        ),
         "attribute_count": pulled_event.attribute_count or 0,
         "object_count": len(pulled_event.objects),
         "timestamp": ts,
-        "distribution": int(pulled_event.distribution) if pulled_event.distribution is not None else 0,
-        "sharing_group_id": int(pulled_event.sharing_group_id) if pulled_event.sharing_group_id and int(pulled_event.sharing_group_id) > 0 else None,
-        "proposal_email_lock": getattr(pulled_event, "proposal_email_lock", False) or False,
+        "distribution": (
+            int(pulled_event.distribution)
+            if pulled_event.distribution is not None
+            else 0
+        ),
+        "sharing_group_id": (
+            int(pulled_event.sharing_group_id)
+            if pulled_event.sharing_group_id and int(pulled_event.sharing_group_id) > 0
+            else None
+        ),
+        "proposal_email_lock": getattr(pulled_event, "proposal_email_lock", False)
+        or False,
         "locked": getattr(pulled_event, "locked", False) or False,
-        "threat_level": int(pulled_event.threat_level_id) if pulled_event.threat_level_id else 4,
+        "threat_level": (
+            int(pulled_event.threat_level_id) if pulled_event.threat_level_id else 4
+        ),
         "publish_timestamp": int(pulled_event.publish_timestamp.timestamp()),
-        "disable_correlation": getattr(pulled_event, "disable_correlation", False) or False,
-        "extends_uuid": str(pulled_event.extends_uuid) if pulled_event.extends_uuid else None,
+        "disable_correlation": getattr(pulled_event, "disable_correlation", False)
+        or False,
+        "extends_uuid": (
+            str(pulled_event.extends_uuid) if pulled_event.extends_uuid else None
+        ),
         "protected": getattr(pulled_event, "protected", False) or False,
         "deleted": getattr(pulled_event, "deleted", False) or False,
         "tags": [],
@@ -345,18 +391,36 @@ def update_event_from_pulled_event(
     ts = int(pulled_event.timestamp.timestamp())
 
     patch = {
-        "date": pulled_event.date.isoformat() if hasattr(pulled_event.date, "isoformat") else str(pulled_event.date),
+        "date": (
+            pulled_event.date.isoformat()
+            if hasattr(pulled_event.date, "isoformat")
+            else str(pulled_event.date)
+        ),
         "info": pulled_event.info,
         "published": pulled_event.published or False,
-        "analysis": int(pulled_event.analysis) if pulled_event.analysis is not None else 0,
+        "analysis": (
+            int(pulled_event.analysis) if pulled_event.analysis is not None else 0
+        ),
         "attribute_count": pulled_event.attribute_count or 0,
         "object_count": len(pulled_event.objects),
         "timestamp": ts,
-        "distribution": int(pulled_event.distribution) if pulled_event.distribution is not None else 0,
-        "sharing_group_id": int(pulled_event.sharing_group_id) if pulled_event.sharing_group_id and int(pulled_event.sharing_group_id) > 0 else None,
-        "threat_level": int(pulled_event.threat_level_id) if pulled_event.threat_level_id else 4,
+        "distribution": (
+            int(pulled_event.distribution)
+            if pulled_event.distribution is not None
+            else 0
+        ),
+        "sharing_group_id": (
+            int(pulled_event.sharing_group_id)
+            if pulled_event.sharing_group_id and int(pulled_event.sharing_group_id) > 0
+            else None
+        ),
+        "threat_level": (
+            int(pulled_event.threat_level_id) if pulled_event.threat_level_id else 4
+        ),
         "disable_correlation": pulled_event.disable_correlation or False,
-        "extends_uuid": str(pulled_event.extends_uuid) if pulled_event.extends_uuid else None,
+        "extends_uuid": (
+            str(pulled_event.extends_uuid) if pulled_event.extends_uuid else None
+        ),
         "@timestamp": datetime.fromtimestamp(ts).isoformat(),
     }
 
@@ -381,23 +445,36 @@ def create_event_from_fetched_event(
         "uuid": event_uuid,
         "org_id": Orgc.id,
         "orgc_id": Orgc.id,
-        "date": fetched_event.date.isoformat() if hasattr(fetched_event.date, "isoformat") else str(fetched_event.date),
+        "date": (
+            fetched_event.date.isoformat()
+            if hasattr(fetched_event.date, "isoformat")
+            else str(fetched_event.date)
+        ),
         "info": fetched_event.info,
         "user_id": user.id,
         "published": fetched_event.published or False,
-        "analysis": int(fetched_event.analysis) if fetched_event.analysis is not None else 0,
+        "analysis": (
+            int(fetched_event.analysis) if fetched_event.analysis is not None else 0
+        ),
         "attribute_count": 0,
         "object_count": len(fetched_event.objects),
         "timestamp": ts,
-        "distribution": feed.distribution.value if hasattr(feed.distribution, "value") else int(feed.distribution),
+        "distribution": (
+            feed.distribution.value
+            if hasattr(feed.distribution, "value")
+            else int(feed.distribution)
+        ),
         "sharing_group_id": feed.sharing_group_id,
         "locked": (fetched_event.locked if hasattr(fetched_event, "locked") else False),
-        "threat_level": int(fetched_event.threat_level_id) if fetched_event.threat_level_id else 4,
+        "threat_level": (
+            int(fetched_event.threat_level_id) if fetched_event.threat_level_id else 4
+        ),
         "publish_timestamp": int(fetched_event.publish_timestamp.timestamp()),
         "disable_correlation": getattr(fetched_event, "disable_correlation", False),
         "extends_uuid": (
             str(fetched_event.extends_uuid)
-            if hasattr(fetched_event, "extends_uuid") and fetched_event.extends_uuid != ""
+            if hasattr(fetched_event, "extends_uuid")
+            and fetched_event.extends_uuid != ""
             else None
         ),
         "protected": False,
@@ -427,7 +504,9 @@ def create_event_from_fetched_event(
             db.add(db_tag)
             db.commit()
             db.refresh(db_tag)
-        tags_repository.tag_event(db, event_schemas.Event.model_validate(event_doc), db_tag)
+        tags_repository.tag_event(
+            db, event_schemas.Event.model_validate(event_doc), db_tag
+        )
 
     return event_schemas.Event.model_validate(event_doc)
 
@@ -445,27 +524,42 @@ def update_event_from_fetched_event(
     existing = get_event_from_opensearch(UUID(event_uuid))
     if existing is None:
         logger.error(f"Event {event_uuid} not found in OpenSearch")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Event not found"
+        )
 
     ts = int(fetched_event.timestamp.timestamp())
     patch = {
-        "date": fetched_event.date.isoformat() if hasattr(fetched_event.date, "isoformat") else str(fetched_event.date),
+        "date": (
+            fetched_event.date.isoformat()
+            if hasattr(fetched_event.date, "isoformat")
+            else str(fetched_event.date)
+        ),
         "info": fetched_event.info,
         "published": fetched_event.published or False,
-        "analysis": int(fetched_event.analysis) if fetched_event.analysis is not None else 0,
+        "analysis": (
+            int(fetched_event.analysis) if fetched_event.analysis is not None else 0
+        ),
         "object_count": len(fetched_event.objects),
         "org_id": Orgc.id,
         "orgc_id": Orgc.id,
         "timestamp": ts,
-        "distribution": feed.distribution.value if hasattr(feed.distribution, "value") else int(feed.distribution),
+        "distribution": (
+            feed.distribution.value
+            if hasattr(feed.distribution, "value")
+            else int(feed.distribution)
+        ),
         "sharing_group_id": feed.sharing_group_id,
         "locked": (fetched_event.locked if hasattr(fetched_event, "locked") else False),
-        "threat_level": int(fetched_event.threat_level_id) if fetched_event.threat_level_id else 4,
+        "threat_level": (
+            int(fetched_event.threat_level_id) if fetched_event.threat_level_id else 4
+        ),
         "publish_timestamp": int(fetched_event.publish_timestamp.timestamp()),
         "disable_correlation": getattr(fetched_event, "disable_correlation", False),
         "extends_uuid": (
             str(fetched_event.extends_uuid)
-            if hasattr(fetched_event, "extends_uuid") and fetched_event.extends_uuid != ""
+            if hasattr(fetched_event, "extends_uuid")
+            and fetched_event.extends_uuid != ""
             else None
         ),
         "@timestamp": datetime.fromtimestamp(ts).isoformat(),
@@ -492,18 +586,24 @@ def update_event_from_fetched_event(
     return get_event_from_opensearch(UUID(event_uuid))
 
 
-def update_event(db: Session, event_uuid: UUID, event: event_schemas.EventUpdate) -> event_schemas.Event:
+def update_event(
+    db: Session, event_uuid: UUID, event: event_schemas.EventUpdate
+) -> event_schemas.Event:
     client = get_opensearch_client()
     os_event = get_event_from_opensearch(event_uuid)
     if os_event is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Event not found"
+        )
 
     patch = event.model_dump(exclude_unset=True)
     for k, v in list(patch.items()):
         if hasattr(v, "value"):
             patch[k] = v.value
 
-    client.update(index="misp-events", id=str(os_event.uuid), body={"doc": patch}, refresh=True)
+    client.update(
+        index="misp-events", id=str(os_event.uuid), body={"doc": patch}, refresh=True
+    )
     tasks.handle_updated_event.delay(str(os_event.uuid))
 
     return get_event_from_opensearch(os_event.uuid)
@@ -513,7 +613,9 @@ def delete_event(db: Session, event_uuid: UUID, force: bool = False) -> None:
     client = get_opensearch_client()
     os_event = get_event_from_opensearch(event_uuid)
     if os_event is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Event not found"
+        )
 
     event_uuid = str(os_event.uuid)
 
@@ -522,49 +624,80 @@ def delete_event(db: Session, event_uuid: UUID, force: bool = False) -> None:
         return
 
     # Soft delete: mark deleted=True in OS but keep the document so it remains searchable
-    client.update(index="misp-events", id=event_uuid, body={"doc": {"deleted": True}}, refresh=True)
+    client.update(
+        index="misp-events",
+        id=event_uuid,
+        body={"doc": {"deleted": True}},
+        refresh=True,
+    )
 
 
-def increment_attribute_count(db: Session, event_uuid: str, attributes_count: int = 1) -> None:
+def increment_attribute_count(
+    db: Session, event_uuid: str, attributes_count: int = 1
+) -> None:
     client = get_opensearch_client()
     client.update(
         index="misp-events",
         id=event_uuid,
-        body={"script": {"source": "ctx._source.attribute_count += params.count", "lang": "painless", "params": {"count": attributes_count}}},
+        body={
+            "script": {
+                "source": "ctx._source.attribute_count += params.count",
+                "lang": "painless",
+                "params": {"count": attributes_count},
+            }
+        },
         retry_on_conflict=5,
         refresh=True,
     )
 
 
-def decrement_attribute_count(db: Session, event_uuid: str, attributes_count: int = 1) -> None:
+def decrement_attribute_count(
+    db: Session, event_uuid: str, attributes_count: int = 1
+) -> None:
     client = get_opensearch_client()
     client.update(
         index="misp-events",
         id=event_uuid,
-        body={"script": {"source": "if (ctx._source.attribute_count > 0) { ctx._source.attribute_count -= params.count; }", "lang": "painless", "params": {"count": attributes_count}}},
+        body={
+            "script": {
+                "source": "if (ctx._source.attribute_count > 0) { ctx._source.attribute_count -= params.count; }",
+                "lang": "painless",
+                "params": {"count": attributes_count},
+            }
+        },
         retry_on_conflict=5,
         refresh=True,
     )
 
 
-def increment_object_count(db: Session, event_uuid: str, objects_count: int = 1) -> None:
+def increment_object_count(
+    db: Session, event_uuid: str, objects_count: int = 1
+) -> None:
     client = get_opensearch_client()
     client.update_by_query(
         index="misp-events",
         body={
-            "script": {"source": f"ctx._source.object_count += {objects_count}", "lang": "painless"},
+            "script": {
+                "source": f"ctx._source.object_count += {objects_count}",
+                "lang": "painless",
+            },
             "query": {"term": {"uuid.keyword": event_uuid}},
         },
         refresh=True,
     )
 
 
-def decrement_object_count(db: Session, event_uuid: str, objects_count: int = 1) -> None:
+def decrement_object_count(
+    db: Session, event_uuid: str, objects_count: int = 1
+) -> None:
     client = get_opensearch_client()
     client.update_by_query(
         index="misp-events",
         body={
-            "script": {"source": "if (ctx._source.object_count > 0) { ctx._source.object_count -= 1; } else { ctx._source.object_count = 0; }", "lang": "painless"},
+            "script": {
+                "source": "if (ctx._source.object_count > 0) { ctx._source.object_count -= 1; } else { ctx._source.object_count = 0; }",
+                "lang": "painless",
+            },
             "query": {"term": {"uuid.keyword": event_uuid}},
         },
         refresh=True,
@@ -577,7 +710,9 @@ def publish_event(event: event_schemas.Event) -> event_schemas.Event:
         return event
 
     patch = {"published": True, "publish_timestamp": int(time.time())}
-    client.update(index="misp-events", id=str(event.uuid), body={"doc": patch}, refresh=True)
+    client.update(
+        index="misp-events", id=str(event.uuid), body={"doc": patch}, refresh=True
+    )
 
     tasks.handle_published_event.delay(str(event.uuid))
 
@@ -589,7 +724,12 @@ def unpublish_event(event: event_schemas.Event) -> event_schemas.Event:
     if not event.published:
         return event
 
-    client.update(index="misp-events", id=str(event.uuid), body={"doc": {"published": False}}, refresh=True)
+    client.update(
+        index="misp-events",
+        id=str(event.uuid),
+        body={"doc": {"published": False}},
+        refresh=True,
+    )
 
     tasks.handle_unpublished_event.delay(str(event.uuid))
 

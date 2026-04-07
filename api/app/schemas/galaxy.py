@@ -2,8 +2,9 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from app.models.event import DistributionLevel
 from pydantic import BaseModel, ConfigDict
+
+from app.models.event import DistributionLevel
 
 
 class GalaxyClusterRelationTagBase(BaseModel):

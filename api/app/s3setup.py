@@ -2,6 +2,7 @@
 Garage bootstrap: apply cluster layout, import S3 key, create bucket.
 Run once at startup when STORAGE_ENGINE=s3.
 """
+
 import json
 import os
 import sys
@@ -12,7 +13,10 @@ import urllib.request
 ADMIN_URL = os.environ.get("GARAGE_ADMIN_URL", "http://garage:3903")
 ADMIN_TOKEN = os.environ.get("GARAGE_ADMIN_TOKEN")
 if not ADMIN_TOKEN:
-    print("ERROR: GARAGE_ADMIN_TOKEN environment variable must be set for Garage admin operations.", file=sys.stderr)
+    print(
+        "ERROR: GARAGE_ADMIN_TOKEN environment variable must be set for Garage admin operations.",
+        file=sys.stderr,
+    )
     sys.exit(1)
 ACCESS_KEY = os.environ["S3_ACCESS_KEY"]
 SECRET_KEY = os.environ["S3_SECRET_KEY"]
@@ -52,7 +56,11 @@ def wait_for_garage(retries=30, delay=2):
                 return
         except Exception as e:
             # Ignore transient errors while waiting for Garage, but log them for troubleshooting.
-            print(f"Waiting for Garage admin API failed with: {e!r}", file=sys.stderr, flush=True)
+            print(
+                f"Waiting for Garage admin API failed with: {e!r}",
+                file=sys.stderr,
+                flush=True,
+            )
         time.sleep(delay)
     print("ERROR: Garage did not become ready.", file=sys.stderr)
     sys.exit(1)
@@ -72,9 +80,15 @@ def apply_layout():
     node_id = nodes[0]["id"]
     current_version = response.get("layoutVersion", 0)
     print(f"Applying cluster layout for node {node_id[:12]}...", flush=True)
-    _admin("POST", "/v2/UpdateClusterLayout", {
-        "roles": [{"id": node_id, "zone": "dc1", "capacity": 1_000_000_000, "tags": []}]
-    })
+    _admin(
+        "POST",
+        "/v2/UpdateClusterLayout",
+        {
+            "roles": [
+                {"id": node_id, "zone": "dc1", "capacity": 1_000_000_000, "tags": []}
+            ]
+        },
+    )
     _, code = _admin("POST", "/v2/ApplyClusterLayout", {"version": current_version + 1})
     if code not in (200, 204):
         print(f"WARNING: layout apply returned HTTP {code}", flush=True)
@@ -84,11 +98,15 @@ def apply_layout():
 
 def import_key():
     print(f"Importing S3 key {ACCESS_KEY}...", flush=True)
-    response, code = _admin("POST", "/v2/ImportKey", {
-        "name": "api",
-        "accessKeyId": ACCESS_KEY,
-        "secretAccessKey": SECRET_KEY,
-    })
+    response, code = _admin(
+        "POST",
+        "/v2/ImportKey",
+        {
+            "name": "api",
+            "accessKeyId": ACCESS_KEY,
+            "secretAccessKey": SECRET_KEY,
+        },
+    )
     if code in (200, 204):
         print("S3 key imported.", flush=True)
     elif code == 409:
@@ -106,7 +124,10 @@ def ensure_bucket():
     else:
         response, code = _admin("POST", "/v2/CreateBucket", {"globalAlias": BUCKET})
         if code not in (200, 204):
-            print(f"ERROR: bucket creation failed HTTP {code}: {response}", file=sys.stderr)
+            print(
+                f"ERROR: bucket creation failed HTTP {code}: {response}",
+                file=sys.stderr,
+            )
             sys.exit(1)
         print(f"Bucket '{BUCKET}' created.", flush=True)
 
@@ -116,11 +137,15 @@ def ensure_bucket():
     if not bucket_id:
         print("ERROR: could not retrieve bucket ID.", file=sys.stderr)
         sys.exit(1)
-    _, code = _admin("POST", "/v2/AllowBucketKey", {
-        "bucketId": bucket_id,
-        "accessKeyId": ACCESS_KEY,
-        "permissions": {"read": True, "write": True, "owner": True},
-    })
+    _, code = _admin(
+        "POST",
+        "/v2/AllowBucketKey",
+        {
+            "bucketId": bucket_id,
+            "accessKeyId": ACCESS_KEY,
+            "permissions": {"read": True, "write": True, "owner": True},
+        },
+    )
     if code not in (200, 204):
         print(f"WARNING: AllowBucketKey returned HTTP {code}", flush=True)
     else:

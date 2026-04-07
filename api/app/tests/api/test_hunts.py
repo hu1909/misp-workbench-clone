@@ -1,13 +1,14 @@
 from unittest.mock import patch
 
 import pytest
+from fastapi import status
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
 from app.auth import auth
 from app.models import hunt as hunt_models
 from app.schemas import hunt as hunt_schemas
 from app.tests.api_tester import ApiTester
-from fastapi import status
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 
 
 class TestHuntsResource(ApiTester):
@@ -35,9 +36,7 @@ class TestHuntsResource(ApiTester):
         assert data["items"][0]["status"] == hunt_1.status
 
     @pytest.mark.parametrize("scopes", [[]])
-    def test_get_hunts_unauthorized(
-        self, client: TestClient, auth_token: auth.Token
-    ):
+    def test_get_hunts_unauthorized(self, client: TestClient, auth_token: auth.Token):
         response = client.get(
             "/hunts/", headers={"Authorization": "Bearer " + auth_token}
         )
@@ -109,9 +108,7 @@ class TestHuntsResource(ApiTester):
         assert data["status"] == "active"
 
     @pytest.mark.parametrize("scopes", [[]])
-    def test_create_hunt_unauthorized(
-        self, client: TestClient, auth_token: auth.Token
-    ):
+    def test_create_hunt_unauthorized(self, client: TestClient, auth_token: auth.Token):
         response = client.post(
             "/hunts/",
             json={
@@ -123,9 +120,7 @@ class TestHuntsResource(ApiTester):
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     @pytest.mark.parametrize("scopes", [["hunts:create"]])
-    def test_create_hunt_incomplete(
-        self, client: TestClient, auth_token: auth.Token
-    ):
+    def test_create_hunt_incomplete(self, client: TestClient, auth_token: auth.Token):
         response = client.post(
             "/hunts/",
             json={"name": "Missing query"},
@@ -154,9 +149,7 @@ class TestHuntsResource(ApiTester):
         assert data["query"] == hunt_1.query
 
     @pytest.mark.parametrize("scopes", [["hunts:read"]])
-    def test_get_hunt_by_id_not_found(
-        self, client: TestClient, auth_token: auth.Token
-    ):
+    def test_get_hunt_by_id_not_found(self, client: TestClient, auth_token: auth.Token):
         response = client.get(
             "/hunts/999999", headers={"Authorization": "Bearer " + auth_token}
         )
@@ -197,9 +190,7 @@ class TestHuntsResource(ApiTester):
         assert data["status"] == "paused"
 
     @pytest.mark.parametrize("scopes", [["hunts:update"]])
-    def test_update_hunt_not_found(
-        self, client: TestClient, auth_token: auth.Token
-    ):
+    def test_update_hunt_not_found(self, client: TestClient, auth_token: auth.Token):
         response = client.patch(
             "/hunts/999999",
             json={"name": "Updated"},
@@ -333,9 +324,7 @@ class TestHuntsResource(ApiTester):
         assert data["hunt"]["id"] == hunt_1.id
 
     @pytest.mark.parametrize("scopes", [["hunts:run"]])
-    def test_run_hunt_not_found(
-        self, client: TestClient, auth_token: auth.Token
-    ):
+    def test_run_hunt_not_found(self, client: TestClient, auth_token: auth.Token):
         response = client.post(
             "/hunts/999999/run",
             headers={"Authorization": "Bearer " + auth_token},
@@ -423,9 +412,7 @@ class TestHuntsResource(ApiTester):
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     @pytest.mark.parametrize("scopes", [["hunts:delete"]])
-    def test_delete_hunt_not_found(
-        self, client: TestClient, auth_token: auth.Token
-    ):
+    def test_delete_hunt_not_found(self, client: TestClient, auth_token: auth.Token):
         response = client.delete(
             "/hunts/999999",
             headers={"Authorization": "Bearer " + auth_token},
@@ -449,8 +436,6 @@ class TestHuntsResource(ApiTester):
         assert response.status_code == status.HTTP_204_NO_CONTENT
 
         deleted = (
-            db.query(hunt_models.Hunt)
-            .filter(hunt_models.Hunt.id == hunt_1.id)
-            .first()
+            db.query(hunt_models.Hunt).filter(hunt_models.Hunt.id == hunt_1.id).first()
         )
         assert deleted is None

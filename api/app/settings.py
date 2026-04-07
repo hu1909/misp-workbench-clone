@@ -3,6 +3,7 @@ from functools import lru_cache
 from typing import Optional
 
 from pydantic import BaseModel
+
 from app.services.base_settings import BaseSettings
 
 
@@ -46,9 +47,7 @@ class S3Settings(BaseModel):
         os.environ["S3_ACCESS_KEY"] if os.environ["STORAGE_ENGINE"] == "s3" else ""
     )
     secret_key: str = (
-        os.environ["S3_SECRET_KEY"]
-        if os.environ["STORAGE_ENGINE"] == "s3"
-        else ""
+        os.environ["S3_SECRET_KEY"] if os.environ["STORAGE_ENGINE"] == "s3" else ""
     )
     bucket: str = (
         os.environ["S3_BUCKET"] if os.environ["STORAGE_ENGINE"] == "s3" else ""
@@ -64,10 +63,12 @@ class StorageSettings(BaseModel):
     engine: str = os.environ["STORAGE_ENGINE"] or "local"
     s3: S3Settings = S3Settings()
 
+
 class RedisSettings(BaseModel):
     host: str = os.environ["REDIS_HOSTNAME"] or "localhost"
     port: int = int(os.environ["REDIS_PORT"]) or 6379
     cache_db: int = int(os.environ["REDIS_CACHE_DB"]) or 5
+
 
 class Settings(BaseSettings):
     def __init__(self):

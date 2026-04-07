@@ -1,6 +1,7 @@
 from typing import Optional
 
 import typer
+
 from app.database import SessionLocal
 from app.repositories import organisations as organisations_repository
 from app.repositories import users as user_repository

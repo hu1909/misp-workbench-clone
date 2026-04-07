@@ -1,11 +1,12 @@
 import pytest
+from fastapi import status
+from fastapi.testclient import TestClient
+
 from app.auth import auth
 from app.models import organisation as organisation_models
 from app.models import server as server_models
 from app.models import sharing_groups as sharing_groups_models
 from app.tests.api_tester import ApiTester
-from fastapi import status
-from fastapi.testclient import TestClient
 
 
 class TestSharingGroupsResource(ApiTester):

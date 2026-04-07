@@ -1,10 +1,11 @@
 from typing import Optional
 from uuid import UUID
 
+from pydantic import BaseModel, ConfigDict
+
 from app.models.event import DistributionLevel
 from app.schemas.attribute import Attribute, AttributeCreate
 from app.schemas.object_reference import ObjectReference, ObjectReferenceCreate
-from pydantic import BaseModel, ConfigDict
 
 
 class ObjectBase(BaseModel):

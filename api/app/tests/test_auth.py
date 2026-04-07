@@ -1,17 +1,11 @@
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
-from app.auth.auth import (
-    add_token_to_denylist,
-    authenticate_user,
-    create_access_token,
-    create_refresh_token,
-    get_password_hash,
-    get_random_password,
-    get_scopes_for_user,
-    is_token_revoked,
-    verify_password,
-)
+from app.auth.auth import (add_token_to_denylist, authenticate_user,
+                           create_access_token, create_refresh_token,
+                           get_password_hash, get_random_password,
+                           get_scopes_for_user, is_token_revoked,
+                           verify_password)
 from app.auth.utils import role_has_scope
 
 
@@ -69,13 +63,17 @@ class TestTokenDenylist:
         mock_redis = MagicMock()
         with patch("app.auth.auth.get_redis_client", return_value=mock_redis):
             add_token_to_denylist("test-jti-456")
-        mock_redis.set.assert_called_once_with("auth:jwt_denylist:test-jti-456", "revoked")
+        mock_redis.set.assert_called_once_with(
+            "auth:jwt_denylist:test-jti-456", "revoked"
+        )
 
 
 class TestAuthenticateUser:
     def test_user_not_found_returns_false(self):
         mock_db = MagicMock()
-        with patch("app.auth.auth.users_repository.get_user_by_email", return_value=None):
+        with patch(
+            "app.auth.auth.users_repository.get_user_by_email", return_value=None
+        ):
             result = authenticate_user(mock_db, "notfound@test.com", "password")
         assert result is False
 
@@ -83,7 +81,9 @@ class TestAuthenticateUser:
         mock_db = MagicMock()
         mock_user = MagicMock()
         mock_user.hashed_password = get_password_hash("correctpassword")
-        with patch("app.auth.auth.users_repository.get_user_by_email", return_value=mock_user):
+        with patch(
+            "app.auth.auth.users_repository.get_user_by_email", return_value=mock_user
+        ):
             result = authenticate_user(mock_db, "user@test.com", "wrongpassword")
         assert result is False
 
@@ -91,7 +91,9 @@ class TestAuthenticateUser:
         mock_db = MagicMock()
         mock_user = MagicMock()
         mock_user.hashed_password = get_password_hash("correctpassword")
-        with patch("app.auth.auth.users_repository.get_user_by_email", return_value=mock_user):
+        with patch(
+            "app.auth.auth.users_repository.get_user_by_email", return_value=mock_user
+        ):
             result = authenticate_user(mock_db, "user@test.com", "correctpassword")
         assert result == mock_user
 

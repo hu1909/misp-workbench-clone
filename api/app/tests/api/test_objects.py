@@ -1,8 +1,9 @@
 import pytest
-from app.auth import auth
-from app.tests.api_tester import ApiTester
 from fastapi import status
 from fastapi.testclient import TestClient
+
+from app.auth import auth
+from app.tests.api_tester import ApiTester
 
 
 class TestObjectsResource(ApiTester):
@@ -20,12 +21,12 @@ class TestObjectsResource(ApiTester):
 
         assert response.status_code == status.HTTP_200_OK
 
-        assert len(data['items']) == 1
-        assert data['items'][0]["uuid"] == str(object_1.uuid)
-        assert data['items'][0]["name"] == object_1.name
-        assert data['items'][0]["template_version"] == object_1.template_version
-        assert data['items'][0]["timestamp"] == object_1.timestamp
-        assert data['items'][0]["deleted"] == object_1.deleted
+        assert len(data["items"]) == 1
+        assert data["items"][0]["uuid"] == str(object_1.uuid)
+        assert data["items"][0]["name"] == object_1.name
+        assert data["items"][0]["template_version"] == object_1.template_version
+        assert data["items"][0]["timestamp"] == object_1.timestamp
+        assert data["items"][0]["deleted"] == object_1.deleted
 
     @pytest.mark.parametrize("scopes", [[]])
     def test_get_objects_unauthorized(self, client: TestClient, auth_token: auth.Token):

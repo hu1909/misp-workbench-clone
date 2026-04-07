@@ -1,23 +1,25 @@
 import math
 import time
+from collections import defaultdict
 from datetime import datetime
 from typing import Iterable, Optional
 from uuid import UUID, uuid4
-from app.models.event import DistributionLevel
-from app.services.opensearch import get_opensearch_client
+
+from fastapi import HTTPException, status
+from fastapi_pagination import Page, Params
+from opensearchpy.exceptions import NotFoundError
+from pymisp import MISPAttribute, MISPTag
+from sqlalchemy.orm import Session
+
 from app.models import tag as tag_models
 from app.models import user as user_models
-from app.schemas import tag as tag_schemas
+from app.models.event import DistributionLevel
 from app.repositories import attachments as attachments_repository
 from app.schemas import attribute as attribute_schemas
 from app.schemas import event as event_schemas
+from app.schemas import tag as tag_schemas
+from app.services.opensearch import get_opensearch_client
 from app.worker import tasks
-from fastapi import HTTPException, status
-from fastapi_pagination import Page, Params
-from pymisp import MISPAttribute, MISPTag
-from sqlalchemy.orm import Session
-from collections import defaultdict
-from opensearchpy.exceptions import NotFoundError
 
 
 def enrich_attributes_page_with_correlations(
@@ -134,7 +136,9 @@ def create_attribute(
     event_uuid = str(attribute.event_uuid) if attribute.event_uuid else None
 
     dist = attribute.distribution
-    dist_val = dist.value if hasattr(dist, "value") else (dist if dist is not None else 5)
+    dist_val = (
+        dist.value if hasattr(dist, "value") else (dist if dist is not None else 5)
+    )
 
     attr_doc = {
         "uuid": attribute_uuid,
@@ -158,9 +162,13 @@ def create_attribute(
         "@timestamp": datetime.fromtimestamp(attribute.timestamp or now).isoformat(),
     }
 
-    client.index(index="misp-attributes", id=attribute_uuid, body=attr_doc, refresh=True)
+    client.index(
+        index="misp-attributes", id=attribute_uuid, body=attr_doc, refresh=True
+    )
 
-    tasks.handle_created_attribute.delay(attribute_uuid, attr_doc["object_uuid"], event_uuid)
+    tasks.handle_created_attribute.delay(
+        attribute_uuid, attr_doc["object_uuid"], event_uuid
+    )
 
     return attribute_schemas.Attribute.model_validate(attr_doc)
 
@@ -256,7 +264,8 @@ def update_attribute_from_pulled_attribute(
             ),
             first_seen=(
                 pulled_attribute.first_seen.timestamp()
-                if hasattr(pulled_attribute, "first_seen") and pulled_attribute.first_seen
+                if hasattr(pulled_attribute, "first_seen")
+                and pulled_attribute.first_seen
                 else local_attribute.first_seen
             ),
             last_seen=(
@@ -286,16 +295,24 @@ def update_attribute(
     client = get_opensearch_client()
     os_attr = get_attribute_from_opensearch(attribute_uuid)
     if os_attr is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attribute not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Attribute not found"
+        )
 
     patch = attribute.model_dump(exclude_unset=True)
     for k, v in list(patch.items()):
         if hasattr(v, "value"):
             patch[k] = v.value
 
-    client.update(index="misp-attributes", id=str(os_attr.uuid), body={"doc": patch}, refresh=True)
+    client.update(
+        index="misp-attributes", id=str(os_attr.uuid), body={"doc": patch}, refresh=True
+    )
 
-    tasks.handle_updated_attribute.delay(str(os_attr.uuid), os_attr.object_uuid, str(os_attr.event_uuid) if os_attr.event_uuid else None)
+    tasks.handle_updated_attribute.delay(
+        str(os_attr.uuid),
+        os_attr.object_uuid,
+        str(os_attr.event_uuid) if os_attr.event_uuid else None,
+    )
 
     return get_attribute_from_opensearch(os_attr.uuid)
 
@@ -306,7 +323,9 @@ def delete_attribute(db: Session, attribute_uuid: UUID) -> None:
     os_attr = get_attribute_from_opensearch(attribute_uuid)
 
     if os_attr is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attribute not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Attribute not found"
+        )
 
     client.update(
         index="misp-attributes",
@@ -315,7 +334,11 @@ def delete_attribute(db: Session, attribute_uuid: UUID) -> None:
         refresh=True,
     )
 
-    tasks.handle_deleted_attribute.delay(str(os_attr.uuid), os_attr.object_uuid, str(os_attr.event_uuid) if os_attr.event_uuid else None)
+    tasks.handle_deleted_attribute.delay(
+        str(os_attr.uuid),
+        os_attr.object_uuid,
+        str(os_attr.event_uuid) if os_attr.event_uuid else None,
+    )
 
 
 def capture_attribute_tags(
@@ -423,6 +446,7 @@ def search_attributes(
         "results": response["hits"]["hits"],
     }
 
+
 def search_attributes_histogram(query: str = None, interval: str = "1d"):
     OpenSearchClient = get_opensearch_client()
 
@@ -430,7 +454,9 @@ def search_attributes_histogram(query: str = None, interval: str = "1d"):
         "size": 0,
         "query": {
             "bool": {
-                "must": {"query_string": {"query": query or "*", "default_field": "value"}},
+                "must": {
+                    "query_string": {"query": query or "*", "default_field": "value"}
+                },
                 "filter": {"term": {"deleted": False}},
             }
         },
